@@ -272,7 +272,12 @@ function autoRellenarMetasPrueba() {
   }
 }
 
-function actualizarDatosOdoo() {
+function actualizarDatosOdoo() { return actualizarDatosOdoo_(false); }
+
+/** La corre el trigger automático: sin ventanas ni avisos (un trigger no tiene interfaz). */
+function actualizarAutomatico() { return actualizarDatosOdoo_(true); }
+
+function actualizarDatosOdoo_(silencioso) {
   const ss = SpreadsheetApp.getActiveSpreadsheet(); let sheetData = ss.getSheetByName(HOJA_DESTINO), configSheet = ss.getSheetByName(HOJA_CONFIG);
   if (!sheetData) { sheetData = ss.insertSheet(HOJA_DESTINO); }
   // Planilla nueva: si todavía no está la hoja CONFIG, se arma sola con el mes en curso.
@@ -286,7 +291,7 @@ function actualizarDatosOdoo() {
 
   sheetData.clear();
 
-  ss.toast("Conectando con Odoo...", "⏳ Procesando", 5); var pwd = getOdooPwd_(); var uid = login(ODOO_URL, ODOO_DB, ODOO_USER, pwd); if (!uid) return;
+  if (!silencioso) ss.toast("Conectando con Odoo...", "⏳ Procesando", 5); var pwd = getOdooPwd_(); var uid = login(ODOO_URL, ODOO_DB, ODOO_USER, pwd); if (!uid) return;
 
   var lines = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move.line", "search_read", [[
     ["move_id.state", "=", "posted"],
@@ -406,7 +411,11 @@ function actualizarDatosOdoo() {
   if (sheetData.getMaxColumns() < 35) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 35 - sheetData.getMaxColumns());
   sheetData.getRange(1, 1, 1, 33).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
-  SpreadsheetApp.flush(); SpreadsheetApp.getUi().alert(`✅ ¡Base de Odoo Actualizada!`);
+  // Sello de última actualización: el dashboard lo muestra en el menú lateral.
+  configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
+  configSheet.getRange("B9").setValue(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm"));
+  SpreadsheetApp.flush();
+  if (!silencioso) SpreadsheetApp.getUi().alert(`✅ ¡Base de Odoo Actualizada! ` + rowsOut.length + ` líneas.`);
 }
 
 function cargarMetasCentralesDesdeConfig(sheet) {
@@ -762,6 +771,46 @@ function login(url, db, u, p) { var r = UrlFetchApp.fetch(url, {method:"post", c
 function execute_kw(url, db, uid, p, model, method, args, kwargs) { var r = UrlFetchApp.fetch(url, {method:"post", contentType:"application/json", payload:JSON.stringify({jsonrpc:"2.0",method:"call",params:{service:"object",method:"execute_kw",args:[db,uid,p,model,method,args,kwargs]},id:2})}); return JSON.parse(r.getContentText()).result; }
 function formatearFechaParaOdoo(v) { if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd"); let p = v.toString().trim().split("/"); if(p.length===3) return `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`; return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd"); }
 
+// ==================================================================
+//  ⏰ AUTOMATIZACIÓN
+//  Instala un disparador de Apps Script que baja las ventas de Odoo solo,
+//  sin que nadie abra la planilla. Como el dashboard lee el CSV publicado,
+//  con esto se actualiza todo sin tocar nada.
+// ==================================================================
+
+// Cada cuántas horas se baja Odoo (1, 2, 4, 6, 8 o 12).
+const HORAS_ACTUALIZACION = 2;
+
+function activarActualizacionAutomatica() {
+  borrarTriggersActualizacion_();
+  ScriptApp.newTrigger("actualizarAutomatico").timeBased().everyHours(HORAS_ACTUALIZACION).create();
+  SpreadsheetApp.getUi().alert("✅ Actualización automática activada.\n\nSe van a bajar las ventas de Odoo cada " +
+    HORAS_ACTUALIZACION + " hora(s), aunque nadie abra la planilla.\n\nPara cambiar la frecuencia, editá " +
+    "HORAS_ACTUALIZACION arriba del script y volvé a activarla.");
+}
+
+function desactivarActualizacionAutomatica() {
+  var n = borrarTriggersActualizacion_();
+  SpreadsheetApp.getUi().alert(n ? "⏹️ Actualización automática desactivada." : "No había ninguna actualización automática activa.");
+}
+
+function borrarTriggersActualizacion_() {
+  var n = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "actualizarAutomatico") { ScriptApp.deleteTrigger(t); n++; }
+  });
+  return n;
+}
+
+function estadoActualizacionAutomatica() {
+  var trs = ScriptApp.getProjectTriggers().filter(function (t) { return t.getHandlerFunction() === "actualizarAutomatico"; });
+  var ss = SpreadsheetApp.getActiveSpreadsheet(), cfg = ss.getSheetByName(HOJA_CONFIG);
+  var ult = cfg ? cfg.getRange("B9").getValue() : "";
+  SpreadsheetApp.getUi().alert(
+    (trs.length ? "✅ Activa: cada " + HORAS_ACTUALIZACION + " hora(s)." : "⏹️ Desactivada.") +
+    "\n\nÚltima actualización: " + (ult || "todavía no se corrió."));
+}
+
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('⚙️ Menú Vitálica')
     .addItem('🔎 0. Descubrir estructura de Vitálica (Odoo)', 'descubrirEstructuraVitalica')
@@ -771,6 +820,10 @@ function onOpen() {
     .addItem('🛒 4. Desglose E-commerce', 'dibujarDashboardEcommerce')
     .addSeparator()
     .addItem('💾 5. Guardar Historial del Mes', 'guardarHistorial')
+    .addSeparator()
+    .addItem('⏰ Activar actualización automática', 'activarActualizacionAutomatica')
+    .addItem('⏹️ Desactivar actualización automática', 'desactivarActualizacionAutomatica')
+    .addItem('ℹ️ Estado de la actualización automática', 'estadoActualizacionAutomatica')
     .addSeparator()
     .addItem('🔐 Configurar credenciales de Odoo', 'configurarCredencialesOdoo')
     .addItem('⚠️ Restaurar Estructura CONFIG', 'restaurarConfig')

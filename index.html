@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Informe de Ventas — VITÁLICA</title>
+<link rel="icon" href="VITALICA%20LOGO.png">
+<link rel="apple-touch-icon" href="VITALICA%20LOGO.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -73,7 +75,8 @@ select, input[type=date], input[type=text] { padding: 6px 8px; border: 1px solid
 
 /* paneles y tablas */
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 12px; }
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px;
+        overflow-x: auto; }  /* en celular la tabla se desliza dentro de la tarjeta */
 .card h3 { margin: 0 0 9px; font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
 .card h3 small { font-weight: 500; color: var(--muted); font-size: 10.5px; }
 table { width: 100%; border-collapse: collapse; }
@@ -87,11 +90,32 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 .idx { color: var(--muted); width: 26px; }
 .bar-wrap { background: var(--gray-chip); border-radius: 3px; height: 6px; overflow: hidden; margin-top: 3px; }
 .bar { height: 100%; background: var(--brand); }
-.tbl-scroll { max-height: 340px; overflow-y: auto; }
+.tbl-scroll { max-height: 340px; overflow-y: auto; overflow-x: auto; }
 .pos { color: var(--green); font-weight: 700; }
 .neg { color: var(--red); font-weight: 700; }
 .chart-box { position: relative; height: 260px; }
 .empty { color: var(--muted); font-style: italic; padding: 14px; text-align: center; }
+
+/* columnas ordenables y filas clicables */
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { background: var(--brand-dark); }
+th .arrow { opacity: .45; margin-left: 3px; font-size: 9px; }
+th.sorted .arrow { opacity: 1; }
+tbody tr.clickable { cursor: pointer; }
+tbody tr.clickable:hover { background: var(--brand-soft); }
+tbody tr.clickable td:nth-child(2) { text-decoration-color: transparent; }
+tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
+
+/* chips de filtros activos */
+#chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; align-items: center; }
+#chips:empty { display: none; }
+.chip { background: var(--brand-soft); border: 1px solid #f6cba6; color: #8a4b06; border-radius: 20px;
+        padding: 3px 6px 3px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.chip b { font-weight: 800; }
+.chip .x { cursor: pointer; background: #fff; border-radius: 50%; width: 15px; height: 15px; line-height: 14px;
+           text-align: center; font-size: 11px; color: #b5651d; }
+.chip .x:hover { background: var(--brand); color: #fff; }
+.chip-limpiar { background: #fff; border: 1px solid var(--border); color: var(--muted); cursor: pointer; }
 
 /* loader */
 #loader { position: fixed; inset: 0; background: rgba(255,255,255,.96); display: flex; flex-direction: column;
@@ -105,9 +129,17 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 .hide { display: none !important; }
 @media (max-width: 820px) {
   body { flex-direction: column; height: auto; }
-  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 5px; }
-  .sidebar-logo, .sidebar h2, .side-note { display: none; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 5px; padding: 8px; }
+  .sidebar h2, .side-note { display: none; }
+  .sidebar-logo { width: 42px; margin: 0 6px 0 0; padding: 3px; }
+  .menu-item { padding: 7px 9px; font-size: 11px; margin-bottom: 0; }
   .main { padding: 10px; }
+  .topbar { gap: 6px; }
+  .f-group { flex: 1 1 140px; }
+  select, input[type=date], input[type=text], .ms { min-width: 0; width: 100%; }
+  .ms-panel { min-width: 200px; }
+  .kpi .k-val { font-size: 17px; }
+  .card table { min-width: 420px; }   /* se desliza en vez de apretujarse */
 }
 </style>
 </head>
@@ -120,7 +152,8 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 </div>
 
 <aside class="sidebar">
-  <img src="LOGO_VITALICA.png" alt="Vitálica" class="sidebar-logo" onerror="this.style.display='none'">
+  <img src="VITALICA%20LOGO.png" alt="Vitálica" class="sidebar-logo"
+       onerror="if(!this.dataset.r){this.dataset.r=1;this.src='LOGO_VITALICA.png';}else{this.style.display='none';}">
   <h2>Vitálica · BI</h2>
   <div id="menu-canales"></div>
   <div class="menu-item" data-page="__objetivos" onclick="irA('__objetivos', this)">🎯 Objetivos</div>
@@ -138,6 +171,7 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
     <div class="f-group"><label>Vendedor</label><div class="ms" id="ms-vendedor"></div></div>
     <div class="f-group"><label>Canal</label><div class="ms" id="ms-canal"></div></div>
     <div class="f-group"><label>Categoría</label><div class="ms" id="ms-categoria"></div></div>
+    <div class="f-group"><label>Producto</label><div class="ms" id="ms-producto"></div></div>
     <div class="f-group"><label>Cliente</label><input type="text" id="f-cliente" placeholder="buscar cliente..." oninput="aplicar()"></div>
     <div class="f-group"><label>Desde</label><input type="date" id="f-desde" onchange="aplicar()"></div>
     <div class="f-group"><label>Hasta</label><input type="date" id="f-hasta" onchange="aplicar()"></div>
@@ -145,6 +179,8 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
     <div class="f-group"><label>&nbsp;</label><button class="btn" onclick="iniciar()">🔄 Actualizar</button></div>
     <div class="f-group"><label>&nbsp;</label><button class="btn btn-sec" onclick="exportarExcel()">⬇ Excel</button></div>
   </div>
+
+  <div id="chips"></div>
 
   <div id="titulo-pagina" class="card" style="padding:9px 12px;margin-bottom:10px;">
     <b id="txt-pagina" style="font-size:14px;"></b>
@@ -223,7 +259,8 @@ let FILAS = [];          // ventas normalizadas
 let METAS = null;        // objetivos leídos de CONFIG
 let PAGINA = "__resumen";
 let charts = {};
-let filtros = { anio: "", mes: "", vendedores: [], canales: [], categorias: [], cliente: "", desde: "", hasta: "" };
+let filtros = { anio: "", mes: "", vendedores: [], canales: [], categorias: [], productos: [], clientes: [], cliente: "", desde: "", hasta: "" };
+let ordenTablas = {};   // por tabla: { col: "monto"|"cantidad"|"facturas"|"clave", dir: -1|1 }
 
 // ---------------------------------------------------------------- utils
 const norm = s => String(s == null ? "" : s).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
@@ -392,7 +429,8 @@ function normalizarData(filas) {
       categoria: String(r[15] || "").trim() || "Sin Categoría",
       vendedor: vend,
       canal: String(r[18] || "").trim() || "Sin Canal",
-      producto: String(r[20] || "").trim() || "Varios",
+      // El producto viene como "[5901330026461] Creatina Polvo OLIMP...": se saca el código.
+      producto: String(r[20] || "").replace(/^\[[^\]]*\]\s*/, "").trim() || "Varios",
       cantidad: aNumero(r[24]),
       monto: aNumero(r[30])
     });
@@ -459,6 +497,7 @@ function msCambio(id) {
   if (id === "ms-vendedor") filtros.vendedores = arr;
   else if (id === "ms-canal") filtros.canales = arr;
   else if (id === "ms-categoria") filtros.categorias = arr;
+  else if (id === "ms-producto") filtros.productos = arr;
   aplicar();
 }
 document.addEventListener("click", () => document.querySelectorAll(".ms.open").forEach(m => m.classList.remove("open")));
@@ -476,6 +515,7 @@ function construirFiltros() {
   multiselect("ms-vendedor", "vendedor", "Vendedor");
   multiselect("ms-canal", "canal", "Canal");
   multiselect("ms-categoria", "categoria", "Categoría");
+  multiselect("ms-producto", "producto", "Producto");
   document.getElementById("nmeses-activo").textContent = MESES_CLIENTE_ACTIVO;
 }
 function construirMenu() {
@@ -492,14 +532,21 @@ function irA(pagina, el) {
   if (el) el.classList.add("active");
   aplicar();
 }
+// Tocar un mes en la tabla lo filtra (y volver a tocarlo lo saca).
+function filtrarMes(m) {
+  const sel = document.getElementById("f-mes");
+  sel.value = (String(filtros.mes) === String(m)) ? "" : String(m);
+  aplicar();
+}
 function limpiarFiltros() {
   filtros.mes = ""; filtros.cliente = ""; filtros.desde = ""; filtros.hasta = "";
   filtros.vendedores = []; filtros.canales = []; filtros.categorias = [];
+  filtros.productos = []; filtros.clientes = [];
   document.getElementById("f-mes").value = "";
   document.getElementById("f-cliente").value = "";
   document.getElementById("f-desde").value = "";
   document.getElementById("f-hasta").value = "";
-  ["ms-vendedor", "ms-canal", "ms-categoria"].forEach(id => {
+  ["ms-vendedor", "ms-canal", "ms-categoria", "ms-producto"].forEach(id => {
     const c = document.getElementById(id);
     c.querySelectorAll("input").forEach(i => i.checked = true);
     c.querySelector(".ms-btn").textContent = "-- Todos --";
@@ -525,6 +572,8 @@ function filtrar() {
     if (filtros.vendedores.length && !filtros.vendedores.includes(r.vendedor)) return false;
     if (filtros.canales.length && !filtros.canales.includes(r.canal)) return false;
     if (filtros.categorias.length && !filtros.categorias.includes(r.categoria)) return false;
+    if (filtros.productos.length && !filtros.productos.includes(r.producto)) return false;
+    if (filtros.clientes.length && !filtros.clientes.includes(r.cliente)) return false;
     if (cli && !norm(r.cliente).includes(cli)) return false;
     if (PAGINA !== "__resumen" && !PAGINA.startsWith("__") && r.canal !== PAGINA) return false;
     return true;
@@ -557,6 +606,7 @@ function aplicarInterno() {
     (filtros.mes ? MESES[+filtros.mes] + " " : "Año ") + filtros.anio +
     " · " + num(datos.length) + " líneas de factura";
 
+  renderChips();
   if (esObjetivos) return renderObjetivos(datos);
   if (esNC) return renderNC(datos);
   renderDatos(datos);
@@ -579,25 +629,101 @@ function agrupar(datos, campo, soloVentas) {
   })).sort((a, b) => b.monto - a.monto);
 }
 
+// Ordena una tabla por la columna que se toque. Se acuerda de cada tabla por separado.
+function ordenarTabla(idTabla, col) {
+  const st = ordenTablas[idTabla] || { col: "monto", dir: -1 };
+  if (st.col === col) st.dir = -st.dir; else { st.col = col; st.dir = (col === "clave" ? 1 : -1); }
+  ordenTablas[idTabla] = st;
+  aplicar();
+}
+
+// Aplica un filtro al tocar una fila (ej. tocar un vendedor filtra por ese vendedor).
+function filtrarPor(campo, valor) {
+  const mapa = { vendedor: "vendedores", canal: "canales", categoria: "categorias", producto: "productos", cliente: "clientes" };
+  const destino = mapa[campo];
+  if (!destino) return;
+  if (filtros[destino].includes(valor)) filtros[destino] = filtros[destino].filter(v => v !== valor);
+  else filtros[destino] = filtros[destino].concat([valor]);
+  sincronizarMultiselects();
+  aplicar();
+}
+function quitarFiltro(destino, valor) {
+  filtros[destino] = filtros[destino].filter(v => v !== valor);
+  sincronizarMultiselects();
+  aplicar();
+}
+// Deja los desplegables mostrando lo mismo que los filtros aplicados por clic.
+function sincronizarMultiselects() {
+  [["ms-vendedor", "vendedores"], ["ms-canal", "canales"], ["ms-categoria", "categorias"], ["ms-producto", "productos"]]
+    .forEach(([id, campo]) => {
+      const cont = document.getElementById(id); if (!cont) return;
+      const cajas = [...cont.querySelectorAll('.ms-panel input[value]')];
+      const sel = filtros[campo];
+      cajas.forEach(c => c.checked = (sel.length === 0 || sel.includes(c.value)));
+      const marcadas = cajas.filter(c => c.checked).length;
+      cont.querySelector(".ms-all input").checked = (marcadas === cajas.length);
+      cont.querySelector(".ms-btn").textContent = sel.length ? sel.length + " seleccionado" + (sel.length > 1 ? "s" : "") : "-- Todos --";
+    });
+}
+// Muestra los filtros activos como etiquetas, para saber siempre qué se está viendo.
+function renderChips() {
+  const cont = document.getElementById("chips");
+  const etiquetas = { vendedores: "Vendedor", canales: "Canal", categorias: "Categoría", productos: "Producto", clientes: "Cliente" };
+  let h = "";
+  Object.keys(etiquetas).forEach(campo => {
+    (filtros[campo] || []).forEach(v => {
+      h += '<span class="chip">' + etiquetas[campo] + ': <b>' + esc(v) + '</b>' +
+        '<span class="x" title="Quitar" onclick="quitarFiltro(\'' + campo + '\', ' + JSON.stringify(v).replace(/"/g, "&quot;") + ')">×</span></span>';
+    });
+  });
+  if (filtros.mes) h += '<span class="chip">Mes: <b>' + MESES[+filtros.mes] + '</b><span class="x" onclick="document.getElementById(\'f-mes\').value=\'\';aplicar();">×</span></span>';
+  if (filtros.cliente) h += '<span class="chip">Busca: <b>' + esc(filtros.cliente) + '</b><span class="x" onclick="document.getElementById(\'f-cliente\').value=\'\';aplicar();">×</span></span>';
+  if (h) h += '<span class="chip chip-limpiar" onclick="limpiarFiltros()">limpiar todo</span>';
+  cont.innerHTML = h;
+}
+
+// Tabla de ranking: columnas ordenables (se toca el encabezado) y filas que filtran (se toca la fila).
 function tablaRanking(idTabla, filas, encabezado, opts) {
   opts = opts || {};
   const el = document.getElementById(idTabla);
   if (!filas.length) { el.innerHTML = '<tbody><tr><td class="empty">Sin datos con estos filtros</td></tr></tbody>'; return 0; }
+
   const total = filas.reduce((s, f) => s + f.monto, 0);
   const max = Math.max(...filas.map(f => Math.abs(f.monto)), 1);
+
+  const st = ordenTablas[idTabla] || { col: "monto", dir: -1 };
+  ordenTablas[idTabla] = st;
+  filas = filas.slice().sort((a, b) => st.col === "clave"
+    ? st.dir * String(a.clave).localeCompare(String(b.clave), "es")
+    : st.dir * ((a[st.col] || 0) - (b[st.col] || 0)));
+
+  const th = (col, txt, clsNum) => {
+    const activa = st.col === col;
+    return "<th class='sortable" + (activa ? " sorted" : "") + (clsNum ? " num" : "") + "' onclick=\"ordenarTabla('" +
+      idTabla + "','" + col + "')\" title='Ordenar por " + txt + "'>" + txt +
+      "<span class='arrow'>" + (activa ? (st.dir < 0 ? "▼" : "▲") : "▽") + "</span></th>";
+  };
+
+  const campo = opts.campo || "";
   const top = filas.slice(0, opts.topN || TOP_N);
-  let h = "<thead><tr><th class='idx'>#</th><th>" + encabezado + "</th><th class='num'>Sin IVA PYG</th>";
-  if (opts.cantidad) h += "<th class='num'>Cantidad</th>";
-  if (opts.facturas) h += "<th class='num'>Facturas</th>";
+
+  let h = "<thead><tr><th class='idx'>#</th>" + th("clave", encabezado) + th("monto", "Sin IVA PYG", true);
+  if (opts.cantidad) h += th("cantidad", "Cantidad", true);
+  if (opts.facturas) h += th("facturas", "Facturas", true);
   h += "<th class='num'>%</th></tr></thead><tbody>";
+
   top.forEach((f, i) => {
-    h += "<tr><td class='idx'>" + (i + 1) + "</td><td>" + esc(f.clave) +
+    const sel = campo && (filtros[{ vendedor: "vendedores", canal: "canales", categoria: "categorias", producto: "productos", cliente: "clientes" }[campo]] || []).includes(f.clave);
+    const click = campo ? " class='clickable" + (sel ? " total-row" : "") + "' onclick='filtrarPor(\"" + campo + "\", " +
+      JSON.stringify(f.clave).replace(/'/g, "&#39;").replace(/"/g, "&quot;") + ")' title='Filtrar por " + esc(f.clave) + "'" : "";
+    h += "<tr" + click + "><td class='idx'>" + (i + 1) + "</td><td>" + esc(f.clave) +
       "<div class='bar-wrap'><div class='bar' style='width:" + Math.min(100, Math.abs(f.monto) / max * 100) + "%'></div></div></td>" +
       "<td class='num'>" + num(f.monto) + "</td>";
     if (opts.cantidad) h += "<td class='num'>" + num(f.cantidad) + "</td>";
     if (opts.facturas) h += "<td class='num'>" + num(f.facturas) + "</td>";
     h += "<td class='num'>" + pct(f.monto, total).toFixed(1) + "%</td></tr>";
   });
+
   h += "<tr class='total-row'><td></td><td>Total (" + filas.length + ")</td><td class='num'>" + num(total) + "</td>";
   if (opts.cantidad) h += "<td class='num'>" + num(filas.reduce((s, f) => s + f.cantidad, 0)) + "</td>";
   if (opts.facturas) h += "<td class='num'>" + num(filas.reduce((s, f) => s + f.facturas, 0)) + "</td>";
@@ -644,22 +770,24 @@ function kpi(lbl, val, sub, neg) {
 function renderDatos(datos) {
   renderKPIs(calcularKPIs(datos));
 
-  tablaRanking("t-productos", agrupar(datos, "producto", true), "Producto", { cantidad: true });
-  tablaRanking("t-clientes", agrupar(datos, "cliente", true), "Cliente", { cantidad: true, facturas: true });
-  tablaRanking("t-vendedores", agrupar(datos, "vendedor", true), "Vendedor", { facturas: true, topN: 30 });
-  tablaRanking("t-categorias", agrupar(datos, "categoria", true), "Categoría", { cantidad: true, topN: 30 });
+  tablaRanking("t-productos", agrupar(datos, "producto", true), "Producto", { cantidad: true, campo: "producto" });
+  tablaRanking("t-clientes", agrupar(datos, "cliente", true), "Cliente", { cantidad: true, facturas: true, campo: "cliente" });
+  tablaRanking("t-vendedores", agrupar(datos, "vendedor", true), "Vendedor", { cantidad: true, facturas: true, topN: 30, campo: "vendedor" });
+  tablaRanking("t-categorias", agrupar(datos, "categoria", true), "Categoría", { cantidad: true, topN: 30, campo: "categoria" });
   const porCanal = agrupar(datos, "canal", true);
-  tablaRanking("t-canales", porCanal, "Canal", { facturas: true, topN: 30 });
+  tablaRanking("t-canales", porCanal, "Canal", { cantidad: true, facturas: true, topN: 30, campo: "canal" });
 
   // Ventas por mes (en orden cronológico)
   const meses = {};
   datos.forEach(r => { if (r.esNC) return; meses[r.mes] = (meses[r.mes] || 0) + r.monto; });
-  const filasMes = Object.keys(meses).map(Number).sort((a, b) => a - b).map(m => ({ clave: MESES[m], monto: meses[m] }));
+  const filasMes = Object.keys(meses).map(Number).sort((a, b) => a - b).map(m => ({ mes: m, clave: MESES[m], monto: meses[m] }));
   const totalMes = filasMes.reduce((s, f) => s + f.monto, 0);
   const maxMes = Math.max(...filasMes.map(f => f.monto), 1);
   document.getElementById("t-meses").innerHTML = filasMes.length
     ? "<thead><tr><th>Mes</th><th class='num'>Sin IVA PYG</th><th class='num'>%</th></tr></thead><tbody>" +
-      filasMes.map(f => "<tr><td>" + f.clave + "<div class='bar-wrap'><div class='bar' style='width:" +
+      filasMes.map(f => "<tr class='clickable" + (String(filtros.mes) === String(f.mes) ? " total-row" : "") +
+        "' onclick=\"filtrarMes('" + f.mes + "')\" title='Filtrar por " + f.clave + "'><td>" + f.clave +
+        "<div class='bar-wrap'><div class='bar' style='width:" +
         (f.monto / maxMes * 100) + "%'></div></div></td><td class='num'>" + num(f.monto) + "</td><td class='num'>" +
         pct(f.monto, totalMes).toFixed(1) + "%</td></tr>").join("") +
       "<tr class='total-row'><td>Total</td><td class='num'>" + num(totalMes) + "</td><td class='num'>100%</td></tr></tbody>"
