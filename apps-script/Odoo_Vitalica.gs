@@ -63,6 +63,21 @@ const MONTO_BASE = "SIN_IVA";
 //    ("ALL / Suplementos (Padre) / Proteínas"  ➜  "Proteínas").
 const EJE_PRINCIPAL = "CATEGORIA";
 
+// 📦 REMISIONES / MUESTRARIOS
+//    Hay operaciones que en Odoo quedan como ORDEN DE VENTA confirmada y
+//    entregada, pero nunca se facturan (los muestrarios a gimnasios: Garage
+//    Cross/GTC, Bambu, Lynch...). Como no son facturas, el pull normal no las
+//    ve. Con esto se traen aparte, marcadas como "Remisión" en la columna
+//    Documento, así se pueden mostrar o esconder desde el dashboard.
+const TRAER_REMISIONES = true;
+//    Estados de la orden de venta que se consideran entregadas.
+//    "sale" = Orden de venta · "done" = Bloqueada. Los presupuestos sin
+//    confirmar ("draft"/"sent") NO se traen: todavía no son una entrega.
+const ESTADOS_REMISION = ["sale", "done"];
+//    Para no contar dos veces: si la orden ya se facturó, se saltea (esa venta
+//    ya viene por el lado de las facturas).
+const REMISION_SOLO_SIN_FACTURAR = true;
+
 // 📅 Un cliente cuenta como ACTIVO si compró en los últimos N meses.
 const MESES_CLIENTE_ACTIVO = 3;
 
@@ -412,6 +427,12 @@ function actualizarDatosOdoo_(silencioso) {
     });
   }
 
+  var nRemisiones = 0;
+  if (TRAER_REMISIONES) {
+    try { nRemisiones = traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut); }
+    catch (e) { ss.toast("No se pudieron traer las remisiones: " + e.message, "⚠️", 10); }
+  }
+
   if (sheetData.getMaxColumns() < 36) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 36 - sheetData.getMaxColumns());
   sheetData.getRange(1, 1, 1, 34).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
@@ -419,7 +440,92 @@ function actualizarDatosOdoo_(silencioso) {
   configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
   configSheet.getRange("B9").setValue(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm"));
   SpreadsheetApp.flush();
-  if (!silencioso) SpreadsheetApp.getUi().alert(`✅ ¡Base de Odoo Actualizada! ` + rowsOut.length + ` líneas.`);
+  if (!silencioso) SpreadsheetApp.getUi().alert(`✅ ¡Base de Odoo Actualizada!\n\n` +
+    (rowsOut.length - nRemisiones) + ` líneas de facturas y notas de crédito\n` +
+    nRemisiones + ` líneas de remisiones (órdenes entregadas sin facturar)`);
+}
+
+/**
+ * Trae las ÓRDENES DE VENTA entregadas y todavía no facturadas (los muestrarios)
+ * y las agrega a rowsOut con Documento = "Remisión". Devuelve cuántas agregó.
+ */
+function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
+  var filtro = [
+    ["company_id", "=", EMPRESA_ID],
+    ["state", "in", ESTADOS_REMISION],
+    ["date_order", ">=", fechaInicioOdoo + " 00:00:00"],
+    ["date_order", "<=", fechaFinOdoo + " 23:59:59"]
+  ];
+  if (REMISION_SOLO_SIN_FACTURAR) filtro.push(["invoice_status", "!=", "invoiced"]);
+
+  var ordenes = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order", "search_read", [filtro],
+    { fields: ["name", "partner_id", "user_id", "team_id", "date_order", "state", "invoice_status"], limit: 20000 }) || [];
+  if (!ordenes.length) return 0;
+
+  var mapaOrden = {}, ids = [];
+  ordenes.forEach(function (o) { mapaOrden[o.id] = o; ids.push(o.id); });
+
+  var lineas = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order.line", "search_read",
+    [[["order_id", "in", ids]]],
+    { fields: ["order_id", "product_id", "product_uom_qty", "price_subtotal", "price_total", "price_unit", "discount", "name"], limit: 80000 }) || [];
+  if (!lineas.length) return 0;
+
+  var prodIds = [];
+  lineas.forEach(function (l) { if (l.product_id) prodIds.push(l.product_id[0]); });
+  var productos = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "product.product", "read", [[...new Set(prodIds)]],
+    { fields: ["categ_id", "product_brand_id"] }) || [];
+  var mapaProd = {}; productos.forEach(function (p) { mapaProd[p.id] = p; });
+
+  var agregadas = 0;
+  lineas.forEach(function (l) {
+    var orden = mapaOrden[l.order_id[0]]; if (!orden) return;
+
+    var producto = l.product_id ? mapaProd[l.product_id[0]] : null;
+    var productoNombre = l.product_id ? l.product_id[1] : (l.name || "Varios");
+    var marcaOriginal = (producto && producto.product_brand_id) ? producto.product_brand_id[1] : "Sin Marca";
+    var categoriaOriginal = (producto && producto.categ_id) ? producto.categ_id[1] : "";
+    var vendedor = orden.user_id ? orden.user_id[1] : "Sin Vendedor";
+    var teamName = orden.team_id ? orden.team_id[1] : "";
+    var cliente = orden.partner_id ? orden.partner_id[1] : "";
+
+    var vNorm = normTxt_(vendedor), pNorm = normTxt_(productoNombre),
+        cNormCliente = normTxt_(cliente), tNorm = normTxt_(teamName), descNorm = normTxt_(l.name);
+
+    // Mismas exclusiones que las facturas.
+    if (contieneAlguna_(vNorm, VENDEDORES_EXCLUIDOS)) return;
+    if (contieneAlguna_(pNorm, PRODUCTOS_EXCLUIDOS) || contieneAlguna_(descNorm, PRODUCTOS_EXCLUIDOS)) return;
+    if (contieneAlguna_(cNormCliente, CLIENTES_EXCLUIDOS)) return;
+    if (contieneAlguna_(normTxt_(categoriaOriginal), CATEGORIAS_EXCLUIDAS)) return;
+    if (contieneAlguna_(tNorm, EQUIPOS_EXCLUIDOS)) return;
+
+    var canalFinal = CANAL_POR_DEFECTO;
+    for (var i = 0; i < MAPEO_CANALES.length; i++) {
+      var clave = normTxt_(MAPEO_CANALES[i].match);
+      if (clave && (tNorm.indexOf(clave) >= 0 || vNorm.indexOf(clave) >= 0)) { canalFinal = MAPEO_CANALES[i].canal; break; }
+    }
+    var sinVendedor = (vNorm === "" || vNorm.indexOf("SIN VENDEDOR") >= 0 || vNorm === "FALSE");
+    var vendedorEtiquetado = (sinVendedor ? "Sin Vendedor" : vendedor.trim()) + " - " + canalFinal;
+
+    var marcaFinal = obtenerMarcaReal(categoriaOriginal, marcaOriginal, descNorm, pNorm);
+    var unidadNegocio = LISTA_MARCAS.indexOf(marcaFinal) >= 0 ? "MARCAS"
+                      : (LISTA_ARMAS.indexOf(marcaFinal) >= 0 ? "ARMAS Y MUNICIONES" : "Otras Marcas");
+
+    var f = String(orden.date_order || "").split(" ")[0].split("-");
+    if (f.length !== 3) return;
+    var fechaStr = Number(f[2]) + "/" + Number(f[1]) + "/" + Number(f[0]);
+
+    var subtotal = Number(l.price_subtotal || 0), total = Number(l.price_total || 0);
+    var cantidad = Number(l.product_uom_qty || 0), precioUnit = Number(l.price_unit || 0);
+    var montoPanel = (MONTO_BASE === "SIN_IVA") ? subtotal : total;
+    var precioPromedio = cantidad !== 0 ? (subtotal / cantidad) : 0;
+
+    rowsOut.push(["Odoo", fechaStr, Number(f[0]), Number(f[1]), Number(f[2]), "Remisión", orden.name || "",
+      fechaStr, 0, "Contado", total, total, 1, cliente, marcaOriginal, marcaFinal, unidadNegocio,
+      vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(l.discount || 0),
+      precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, "", "so-" + orden.id, teamName]);
+    agregadas++;
+  });
+  return agregadas;
 }
 
 function cargarMetasCentralesDesdeConfig(sheet) {

@@ -189,6 +189,11 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
     <div class="f-group"><label>Categoría</label><div class="ms" id="ms-categoria"></div></div>
     <div class="f-group"><label>Producto</label><div class="ms" id="ms-producto"></div></div>
     <div class="f-group"><label>Cliente</label><input type="text" id="f-cliente" placeholder="buscar cliente..." oninput="aplicar()"></div>
+    <div class="f-group"><label>Documento</label><select id="f-doc" onchange="aplicar()">
+      <option value="">-- Facturas y remisiones --</option>
+      <option value="factura">Solo facturas</option>
+      <option value="remision">Solo remisiones (muestrarios)</option>
+    </select></div>
     <div class="f-group"><label>Desde</label><input type="date" id="f-desde" onchange="aplicar()"></div>
     <div class="f-group"><label>Hasta</label><input type="date" id="f-hasta" onchange="aplicar()"></div>
     <div class="f-group"><label>&nbsp;</label><button class="btn btn-sec" onclick="limpiarFiltros()">Limpiar</button></div>
@@ -205,7 +210,8 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
 
   <div id="vista-datos">
     <div class="kpi-row" id="kpis"></div>
-    <div class="note">Observación: importes sin IVA, excluyendo Merchandising y Muestrario.
+    <div class="note">Observación: importes sin IVA. Incluye <b>facturas</b> y <b>remisiones</b>
+      (órdenes de venta entregadas sin facturar: los muestrarios). Con el filtro «Documento» se separan.
       «Clientes activos» = clientes que compraron en los últimos <b id="nmeses-activo">3</b> meses.</div>
 
     <div class="grid-charts">
@@ -220,7 +226,10 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
     <div class="grid2">
       <div class="card"><h3>Mejores Productos <small id="sub-productos"></small></h3>
         <div class="tbl-scroll"><table id="t-productos"></table></div></div>
-      <div class="card"><h3>Mejores Clientes <small id="sub-clientes"></small></h3>
+      <div class="card"><h3>Mejores Clientes
+          <span><button class="btn btn-sec" style="padding:3px 8px;font-size:10.5px" id="btn-suc"
+            onclick="alternarClientes()">Ver sucursales</button>
+          <small id="sub-clientes"></small></span></h3>
         <div class="tbl-scroll"><table id="t-clientes"></table></div></div>
       <div class="card"><h3>Mejores Vendedores</h3>
         <table id="t-vendedores"></table></div>
@@ -287,7 +296,7 @@ let FILAS = [];          // ventas normalizadas
 let METAS = null;        // objetivos leídos de CONFIG
 let PAGINA = "__resumen";
 let charts = {};
-let filtros = { anio: "", mes: "", vendedores: [], canales: [], categorias: [], productos: [], clientes: [], cliente: "", desde: "", hasta: "" };
+let filtros = { doc: "", anio: "", mes: "", vendedores: [], canales: [], categorias: [], productos: [], clientes: [], cliente: "", desde: "", hasta: "" };
 let ordenTablas = {};   // por tabla: { col: "monto"|"cantidad"|"facturas"|"clave", dir: -1|1 }
 
 // ---------------------------------------------------------------- utils
@@ -436,6 +445,37 @@ function fallo(html) {
 // 1 Fecha · 2 Año · 3 Mes · 5 Documento · 6 Nro Movimiento · 13 Cliente · 15 Filtro Marca (categoría)
 // 17 Vendedor ("Nombre - Canal") · 18 Equipo/Canal · 19 Categoría Odoo · 20 Producto · 24 Cantidad
 // 30 TOTAL GS · 32 ID Factura Odoo
+// En Odoo las sucursales son contactos aparte del mismo cliente:
+//   "GARAGE CROSS SOCIEDAD ANONIMA , GTC-LAMBARE - 80108473-3"
+//   "GARAGE CROSS SOCIEDAD ANONIMA , GTC-VILLA ELISA - 80108473-3"
+// Comparten el RUC, así que se agrupan por RUC y se muestran con el nombre más
+// corto del grupo (la casa matriz). La sucursal se guarda aparte, para poder
+// alternar entre la vista agrupada y la vista por sucursal.
+function partirCliente(nombre) {
+  const txt = String(nombre || "").trim() || "Sin Cliente";
+  const m = txt.match(/-\s*(\d{4,}-[\dkK])\s*$/);
+  const ruc = m ? m[1] : "";
+  const sinRuc = (m ? txt.slice(0, m.index) : txt).replace(/[,\-\s]+$/, "").trim();
+  const coma = sinRuc.indexOf(",");
+  return {
+    ruc: ruc,
+    base: (coma > 0 ? sinRuc.slice(0, coma) : sinRuc).trim() || "Sin Cliente",
+    sucursal: coma > 0 ? sinRuc.slice(coma + 1).trim() : ""
+  };
+}
+function agruparClientes(filas) {
+  const nombre = {};
+  filas.forEach(r => {
+    const g = r.grupoCliente;
+    if (!nombre[g] || r.clienteBase.length < nombre[g].length) nombre[g] = r.clienteBase;
+  });
+  filas.forEach(r => {
+    r.cliente = nombre[r.grupoCliente] || r.clienteBase;
+    r.clienteSucursal = r.sucursal ? r.cliente + " · " + r.sucursal : r.cliente;
+  });
+  return filas;
+}
+
 function normalizarData(filas) {
   const out = [];
   for (let i = 1; i < filas.length; i++) {
@@ -446,6 +486,7 @@ function normalizarData(filas) {
     if (contieneAlguna(vend, VENDEDORES_EXCLUIDOS_DASH)) continue;
     if (contieneAlguna(r[19], CATEGORIAS_EXCLUIDAS_DASH)) continue;
     if (contieneAlguna(r[13], CLIENTES_EXCLUIDOS_DASH)) continue;
+    const cli = partirCliente(r[13]);
     out.push({
       fecha: f, ymd: ymd(f), anio: f.getFullYear(), mes: f.getMonth() + 1,
       esNC: String(r[5]).toUpperCase().includes("CR"),
@@ -454,7 +495,13 @@ function normalizarData(filas) {
       // el ID interno de Odoo (columna 33). Si todavía no está, se arma una clave.
       facturaId: String(r[32] || "").trim() ||
                  (String(r[6] || "") + "|" + String(r[13] || "") + "|" + ymd(f)),
-      cliente: String(r[13] || "").trim() || "Sin Cliente",
+      esRemision: String(r[5]).toUpperCase().includes("REMIS"),
+      cliente: cli.base,            // agruparClientes() lo reemplaza por la casa matriz
+      clienteBase: cli.base,
+      clienteCompleto: String(r[13] || "").trim() || "Sin Cliente",
+      sucursal: cli.sucursal,
+      clienteSucursal: cli.base,
+      grupoCliente: cli.ruc || norm(cli.base),
       categoria: String(r[15] || "").trim() || "Sin Categoría",
       vendedor: vend,
       canal: (function () {
@@ -468,7 +515,7 @@ function normalizarData(filas) {
       monto: aNumero(r[30])
     });
   }
-  return out;
+  return agruparClientes(out);
 }
 
 // CONFIG: B3/B4/B5 fechas · D4 meta global · F/G metas por canal · I/J metas por vendedor
@@ -588,11 +635,12 @@ document.addEventListener("keydown", e => {
 });
 
 function limpiarFiltros() {
-  filtros.mes = ""; filtros.cliente = ""; filtros.desde = ""; filtros.hasta = "";
+  filtros.mes = ""; filtros.cliente = ""; filtros.desde = ""; filtros.hasta = ""; filtros.doc = "";
   filtros.vendedores = []; filtros.canales = []; filtros.categorias = [];
   filtros.productos = []; filtros.clientes = [];
   document.getElementById("f-mes").value = "";
   document.getElementById("f-cliente").value = "";
+  document.getElementById("f-doc").value = "";
   document.getElementById("f-desde").value = "";
   document.getElementById("f-hasta").value = "";
   ["ms-vendedor", "ms-canal", "ms-categoria", "ms-producto"].forEach(id => {
@@ -608,6 +656,7 @@ function leerFiltrosDeUI() {
   filtros.anio = document.getElementById("f-anio").value;
   filtros.mes = document.getElementById("f-mes").value;
   filtros.cliente = document.getElementById("f-cliente").value.trim();
+  filtros.doc = document.getElementById("f-doc").value;
   filtros.desde = document.getElementById("f-desde").value;
   filtros.hasta = document.getElementById("f-hasta").value;
 }
@@ -623,7 +672,9 @@ function filtrar() {
     if (filtros.categorias.length && !filtros.categorias.includes(r.categoria)) return false;
     if (filtros.productos.length && !filtros.productos.includes(r.producto)) return false;
     if (filtros.clientes.length && !filtros.clientes.includes(r.cliente)) return false;
-    if (cli && !norm(r.cliente).includes(cli)) return false;
+    if (cli && !norm(r.clienteCompleto).includes(cli) && !norm(r.cliente).includes(cli)) return false;
+    if (filtros.doc === "factura" && r.esRemision) return false;
+    if (filtros.doc === "remision" && !r.esRemision) return false;
     if (PAGINA !== "__resumen" && !PAGINA.startsWith("__") && r.canal !== PAGINA) return false;
     return true;
   });
@@ -785,8 +836,8 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
 
 // --------------------------------------------------------------- KPIs
 function calcularKPIs(datos) {
-  let monto = 0, nc = 0, lineas = 0;
-  const facturas = new Set(), clientes = new Set(), clientesActivos = new Set();
+  let monto = 0, nc = 0, lineas = 0, montoRemision = 0, lineasRemision = 0;
+  const facturas = new Set(), remisiones = new Set(), clientes = new Set(), clientesActivos = new Set();
   let cantUnidades = 0;
 
   // Corte para "cliente activo": los últimos N meses respecto de la última venta cargada.
@@ -796,18 +847,25 @@ function calcularKPIs(datos) {
   datos.forEach(r => {
     if (r.esNC) { nc += r.monto; return; }
     monto += r.monto; cantUnidades += r.cantidad; lineas++;
-    if (r.facturaId) facturas.add(r.facturaId);
+    if (r.esRemision) { montoRemision += r.monto; lineasRemision++; }
+    if (r.facturaId && !r.esRemision) facturas.add(r.facturaId);
+    if (r.facturaId && r.esRemision) remisiones.add(r.facturaId);
     if (r.cliente) { clientes.add(r.cliente); if (r.fecha >= corte) clientesActivos.add(r.cliente); }
   });
   // "Promedio de Tickets": el Looker usa el promedio (AVG) del monto sin IVA por
   // línea de factura, no monto ÷ facturas. Se replica igual.
-  return { monto, nc, lineas, facturas: facturas.size, clientes: clientes.size, activos: clientesActivos.size,
+  return { monto, nc, lineas, montoRemision, lineasRemision, facturas: facturas.size,
+           remisiones: remisiones.size, clientes: clientes.size, activos: clientesActivos.size,
            unidades: cantUnidades, ticket: lineas ? monto / lineas : 0, corte };
 }
 function renderKPIs(k) {
   document.getElementById("kpis").innerHTML =
-    kpi("Monto Fact. s/IVA", gs(k.monto), num(k.unidades) + " unidades") +
-    kpi("Cant. Facturas", num(k.facturas), num(k.lineas) + " líneas") +
+    kpi("Monto s/IVA", gs(k.monto), k.montoRemision
+      ? num(k.unidades) + " unidades · incl. " + gs(k.montoRemision) + " en remisiones"
+      : num(k.unidades) + " unidades") +
+    kpi("Cant. Facturas", num(k.facturas),
+      k.remisiones ? num(k.remisiones) + " remisiones · " + num(k.lineas) + " líneas"
+                   : num(k.lineas) + " líneas") +
     kpi("Promedio de Tickets", gs(k.ticket), "promedio por línea (AVG)") +
     kpi("Clientes Activos", num(k.activos), "de " + num(k.clientes) + " · desde " + k.corte.toLocaleDateString("es-PY")) +
     kpi("Notas de Crédito", gs(k.nc), pct(Math.abs(k.nc), k.monto).toFixed(1) + "% de la venta", true);
@@ -818,11 +876,23 @@ function kpi(lbl, val, sub, neg) {
 }
 
 // ------------------------------------------------------------- render
+// Los clientes se pueden ver agrupados por casa matriz o abiertos por sucursal.
+let vistaClientes = "grupo";
+function alternarClientes() {
+  vistaClientes = vistaClientes === "grupo" ? "sucursal" : "grupo";
+  const b = document.getElementById("btn-suc");
+  if (b) b.textContent = vistaClientes === "grupo" ? "Ver sucursales" : "Ver agrupado";
+  aplicar();
+}
+
 function renderDatos(datos) {
   renderKPIs(calcularKPIs(datos));
 
   tablaRanking("t-productos", agrupar(datos, "producto", true), "Producto", { cantidad: true, campo: "producto" });
-  tablaRanking("t-clientes", agrupar(datos, "cliente", true), "Cliente", { cantidad: true, facturas: true, campo: "cliente" });
+  const campoCli = vistaClientes === "grupo" ? "cliente" : "clienteSucursal";
+  tablaRanking("t-clientes", agrupar(datos, campoCli, true),
+    vistaClientes === "grupo" ? "Cliente" : "Cliente · Sucursal",
+    { cantidad: true, facturas: true, campo: campoCli });
   tablaRanking("t-vendedores", agrupar(datos, "vendedor", true), "Vendedor", { cantidad: true, facturas: true, topN: 30, campo: "vendedor" });
   tablaRanking("t-categorias", agrupar(datos, "categoria", true), "Categoría", { cantidad: true, topN: 30, campo: "categoria" });
   const porCanal = agrupar(datos, "canal", true);
@@ -845,7 +915,8 @@ function renderDatos(datos) {
     : '<tbody><tr><td class="empty">Sin datos</td></tr></tbody>';
 
   document.getElementById("sub-productos").textContent = agrupar(datos, "producto", true).length + " productos";
-  document.getElementById("sub-clientes").textContent = agrupar(datos, "cliente", true).length + " clientes";
+  document.getElementById("sub-clientes").textContent =
+    agrupar(datos, campoCli, true).length + (vistaClientes === "grupo" ? " clientes" : " sucursales");
 
   donut("ch-canal", porCanal.slice(0, 10));
   donut("ch-categoria", agrupar(datos, "categoria", true).slice(0, 10));
