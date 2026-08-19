@@ -187,8 +187,15 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 // URLs de la planilla publicada (Archivo ▸ Compartir ▸ Publicar en la web).
 // Tienen que ser las mismas hojas que llena el Apps Script: CONFIG y DATA.
 const SHEET_PUB_BASE   = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRWQdgMG_3FJEWqg8fzF1CAkqftbsv7M3a9UpzRUriZyXBoDTbPamjJIomO-v4Mt7V7wOxVtm5APoRD/pub';
-const SHEET_GID_CONFIG = 'PEGAR_GID_CONFIG';
-const SHEET_GID_DATA   = 'PEGAR_GID_DATA';
+// Los gid de cada pestaña. Si se dejan vacíos, el dashboard los busca solo en la
+// página publicada de la planilla (Archivo ▸ Compartir ▸ Publicar en la web).
+// Para fijarlos a mano: abrí la planilla, hacé clic en la pestaña y copiá el
+// número que queda al final de la URL (#gid=XXXXXXX).
+let SHEET_GID_CONFIG = '';
+let SHEET_GID_DATA   = '';
+// Nombres de las pestañas (los usa la búsqueda automática de gid).
+const HOJA_CONFIG = 'CONFIG';
+const HOJA_DATA   = 'DATA';
 
 // Canales del panel (mismos nombres que en el Apps Script).
 const CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
@@ -277,13 +284,18 @@ async function iniciar() {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 90000);
   try {
+    if (!SHEET_GID_CONFIG || !SHEET_GID_DATA) {
+      document.getElementById("loader-text").textContent = "Buscando las pestañas de la planilla...";
+      await descubrirGids(ctrl.signal);
+    }
     const cb = "&single=true&output=csv&cb=" + Date.now();
     const [rc, rd] = await Promise.all([
       fetch(SHEET_PUB_BASE + "?gid=" + SHEET_GID_CONFIG + cb, { signal: ctrl.signal }),
       fetch(SHEET_PUB_BASE + "?gid=" + SHEET_GID_DATA + cb, { signal: ctrl.signal })
     ]);
     clearTimeout(to);
-    if (!rd.ok) throw new Error("No se pudo leer la hoja DATA (HTTP " + rd.status + ")");
+    if (!rd.ok) throw new Error("No se pudo leer la hoja " + HOJA_DATA + " (HTTP " + rd.status +
+      "). El gid usado fue «" + SHEET_GID_DATA + "».");
     const filasData = parseCSV(await rd.text());
     let filasConfig = [];
     if (rc.ok) { try { filasConfig = parseCSV(await rc.text()); } catch (e) { filasConfig = []; } }
@@ -304,6 +316,50 @@ async function iniciar() {
   }
   aplicar();
 }
+// La página publicada (/pubhtml) trae el menú de pestañas, y ahí está el gid de
+// cada una. Así no hay que copiarlos a mano ni tocar el código si cambia la hoja.
+async function descubrirGids(signal) {
+  const url = SHEET_PUB_BASE + "html?cb=" + Date.now();
+  let texto;
+  try {
+    const r = await fetch(url, { signal });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    texto = await r.text();
+  } catch (e) {
+    throw new Error("No se pudieron ubicar las pestañas de la planilla (" + e.message +
+      "). Poné los gid a mano en SHEET_GID_CONFIG y SHEET_GID_DATA dentro de index.html.");
+  }
+
+  const encontrados = {};
+  const doc = new DOMParser().parseFromString(texto, "text/html");
+  // Formato 1: <li id="sheet-button-123456"><a ...>CONFIG</a></li>
+  doc.querySelectorAll('[id^="sheet-button-"]').forEach(li => {
+    const gid = li.id.replace("sheet-button-", "").trim();
+    const nombre = (li.textContent || "").trim();
+    if (gid && nombre) encontrados[nombre.toUpperCase()] = gid;
+  });
+  // Formato 2 (por las dudas): cualquier enlace con gid= y el nombre como texto.
+  if (!Object.keys(encontrados).length) {
+    doc.querySelectorAll('a[href*="gid="]').forEach(a => {
+      const m = a.getAttribute("href").match(/gid=(\d+)/);
+      const nombre = (a.textContent || "").trim();
+      if (m && nombre) encontrados[nombre.toUpperCase()] = m[1];
+    });
+  }
+
+  const cfg = encontrados[HOJA_CONFIG.toUpperCase()], dat = encontrados[HOJA_DATA.toUpperCase()];
+  if (!dat) {
+    const lista = Object.keys(encontrados);
+    throw new Error("En la planilla publicada no aparece ninguna pestaña llamada «" + HOJA_DATA + "»." +
+      (lista.length ? " Las que encontré son: " + lista.join(", ") + "." :
+        " No pude leer ninguna pestaña.") +
+      " Revisá que al publicar esté marcado «Documento completo» y no una sola hoja.");
+  }
+  SHEET_GID_DATA = dat;
+  SHEET_GID_CONFIG = cfg || dat;   // sin CONFIG el panel funciona igual, solo sin objetivos
+  console.log("gid encontrados:", { CONFIG: SHEET_GID_CONFIG, DATA: SHEET_GID_DATA });
+}
+
 function fallo(html) {
   document.getElementById("loader").classList.remove("hide");
   document.getElementById("loader-text").textContent = "";
