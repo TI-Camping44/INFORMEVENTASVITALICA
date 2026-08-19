@@ -33,6 +33,41 @@ GitHub Pages / Netlify
 | `apps-script/WebApp_Objetivos_Vitalica.gs` | Apps Script (Web App) | Plataforma para cargar los objetivos mensuales. |
 | `docs/BRIEF_Vitalica.md` | — | Brief original del proyecto. |
 
+## Qué muestra el dashboard
+
+Réplica de lo que hoy tiene el informe de Looker Studio, más el módulo de objetivos:
+
+- **KPIs**: Monto facturado sin IVA, cantidad de facturas, promedio de tickets
+  (promedio del monto por línea, igual que el AVG del Looker), clientes activos
+  (los que compraron en los últimos 3 meses) y notas de crédito.
+- **Tablas**: mejores productos, mejores clientes, mejores vendedores, ventas por
+  mes, mejores categorías y canales de venta, todas con % de participación.
+- **Páginas**: Resumen + una por canal (Mayorista, Distribuidor, Consumidor Final,
+  Gimnasios y Muestrarios, Sin Comisiones) + Notas de Crédito + Objetivos.
+- **Filtros**: año, mes, vendedor, canal, categoría, cliente y rango de fechas.
+- **Gráficos de torta** con el % dibujado sobre cada porción.
+- **Exportación a Excel** de lo que se está viendo.
+- **Objetivos**: cuando se carguen desde la plataforma web, aparece el avance vs
+  objetivo por canal, por vendedor y por vendedor y categoría, con esperado a hoy,
+  % logrado, cuánto falta facturar por día y proyección de cierre. Mientras no haya
+  objetivos cargados, esa página lo avisa y el resto del panel funciona igual.
+
+**Importante**: los importes son **sin IVA** y se excluyen Merchandising y Muestrario,
+igual que el informe actual.
+
+## Diferencias con Camping 44
+
+Vitálica vende suplementos, así que no hay marcas, armas ni municiones:
+
+| | Camping 44 | Vitálica |
+|---|---|---|
+| Eje del análisis | Marca del producto | **Categoría** (Proteínas, Creatinas, Pre Entrenos, Vitaminas y Minerales, Ácidos Grasos, Bebidas Isotónicas, Salud Articular) |
+| Importes | Con IVA | **Sin IVA** |
+| Canales | Salón, Online, E-commerce, Mayoristas, Venta Externa, Directorio, Reparaciones | **Mayorista, Distribuidor, Consumidor Final, Gimnasios y Muestrarios, Sin Comisiones** |
+| Empresa en Odoo | 1 | **2** |
+| Reglas propias | Contimarket, TUPI/PORTER, exclusiones de personas | Excluye Merchandising y Muestrario |
+| Facturas sin vendedor | No suman | **Sí suman** (aparecen como "Sin Vendedor": es venta real, ej. Gimnasios y Muestrarios) |
+
 ## Puesta en marcha
 
 1. **Crear la planilla de Vitálica** en Google Sheets con dos pestañas: `CONFIG` y `DATA`.
@@ -46,11 +81,12 @@ GitHub Pages / Netlify
    Vitálica (Odoo)*. Genera la hoja `DESCUBRIMIENTO` con los **equipos de venta,
    vendedores, marcas, categorías y clientes** que Vitálica tiene realmente
    facturados este año, ordenados por facturación.
-5. **Completar las listas** con lo que salga de ese paso:
-   - en `apps-script/Odoo_Vitalica.gs`: `MAPEO_CANALES`, `LISTA_MARCAS`,
-     `LISTA_ARMAS`, `VENDEDORES_EXCLUIDOS`, `EQUIPOS_EXCLUIDOS`, `CLIENTES_ECOMMERCE`;
-   - en `index.html` (bloque *CONFIGURACIÓN DE VITÁLICA*): las mismas listas de
-     marcas y de exclusiones.
+5. **Confirmar las listas** con lo que salga de ese paso. Ya vienen cargadas con lo
+   que muestra el Looker actual, pero conviene chequear los nombres exactos que tiene
+   Odoo en `apps-script/Odoo_Vitalica.gs`: `MAPEO_CANALES` (equipos de venta),
+   `LISTA_MARCAS` (las categorías), `CATEGORIAS_EXCLUIDAS` y `VENDEDORES_EXCLUIDOS`.
+   Si cambian los canales, hay que tocar también `CANALES` en `index.html` y
+   `WA_CANALES` en la web app.
 6. **Bajar las ventas**: menú ▸ *🔄 Descargar Ventas Odoo* (llena `DATA`).
 7. **Publicar la planilla**: Archivo ▸ Compartir ▸ Publicar en la web, y pegar
    la URL base y los `gid` de `CONFIG` y `DATA` en:
@@ -60,20 +96,15 @@ GitHub Pages / Netlify
    Aplicación web (ejecutar como: yo). Con esa URL se cargan los objetivos del mes.
 9. **Publicar el dashboard**: GitHub Pages sobre este repo (o Netlify Drop).
 
-## Qué falta definir de Vitálica
+## Qué falta
 
-Estas cosas quedaron **configurables y vacías a propósito**, porque son propias de
-cada empresa y las de Camping 44 no aplican:
-
-- **Canales**: se mantienen los mismos nombres del panel (`Salon`, `Online`,
-  `E-commerce`, `Mayoristas`, `Venta Externa`, `Directorio`, `Reparaciones`) y los
-  equipos de venta de Odoo de Vitálica se mapean encima con `MAPEO_CANALES`. Si
-  Vitálica usa otros canales, se renombran en los 3 archivos a la vez.
-- **Marcas y segunda línea de negocio** (`LISTA_MARCAS` / `LISTA_ARMAS`).
-- **Exclusiones** (administrativos, sin comisión, equipos que no pagan comisión).
-- **E-commerce**: clientes con nombre propio y grupo para el resto.
-- **Objetivos**: mensuales (web app), anuales por vendedor (`RANKING_ANUAL`) y
-  anuales por marca (`OBJ_MARCAS_ANUAL` / `OBJ_AYM_ANUAL`) en `index.html`.
+- **URLs de la planilla publicada** (`SHEET_PUB_BASE`, `SHEET_GID_CONFIG`,
+  `SHEET_GID_DATA` en `index.html`, y `WA_*` en la web app). Sin eso el dashboard
+  avisa que falta configurar y no carga nada.
+- **Confirmar contra Odoo** los nombres exactos de equipos de venta, vendedores y
+  categorías (paso 4 de la puesta en marcha).
+- **Objetivos**: todavía no hay. La plataforma queda lista para cargarlos cuando se
+  definan (meta global, por canal, por vendedor y por vendedor y categoría).
 - **Logo**: `index.html` busca `LOGO_VITALICA.png` en la raíz del repo (si no está,
   simplemente no se muestra).
 
