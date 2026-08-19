@@ -28,7 +28,7 @@ const WA_PUB_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRWQdgMG_3F
 const WA_GID_CONFIG = "PEGAR_GID_CONFIG";
 const WA_GID_DATA = "PEGAR_GID_DATA";   // hoja DATA (ventas de Odoo). Col 18 = Vendedor.
 const WA_HOJA = "CONFIG";
-const WA_CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
+const WA_CANALES = ["Mayorista", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
 const WA_MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 // Vitálica arranca sin histórico previo: se va llenando mes a mes desde esta web app.
 const WA_SEED_B64 = "";

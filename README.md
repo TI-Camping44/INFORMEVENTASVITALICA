@@ -42,8 +42,10 @@ Réplica de lo que hoy tiene el informe de Looker Studio, más el módulo de obj
   (los que compraron en los últimos 3 meses) y notas de crédito.
 - **Tablas**: mejores productos, mejores clientes, mejores vendedores, ventas por
   mes, mejores categorías y canales de venta, todas con % de participación.
-- **Páginas**: Resumen + una por canal (Mayorista, Distribuidor, Consumidor Final,
-  Gimnasios y Muestrarios, Sin Comisiones) + Notas de Crédito + Objetivos.
+- **Páginas**: Resumen + una por canal (Mayorista, Consumidor Final, Gimnasios y
+  Muestrarios, Sin Comisiones, E-commerce) + Notas de Crédito + Objetivos.
+- **Gráficos arriba**: evolución de ventas (por mes en el año completo, por día al
+  elegir un mes) y las dos tortas de contribución por canal y por categoría.
 - **Filtros**: año, mes, vendedor, canal, categoría, cliente y rango de fechas.
 - **Gráficos de torta** con el % dibujado sobre cada porción.
 - **Exportación a Excel** de lo que se está viendo.
@@ -63,9 +65,9 @@ Vitálica vende suplementos, así que no hay marcas, armas ni municiones:
 |---|---|---|
 | Eje del análisis | Marca del producto | **Categoría** (Proteínas, Creatinas, Pre Entrenos, Vitaminas y Minerales, Ácidos Grasos, Bebidas Isotónicas, Salud Articular) |
 | Importes | Con IVA | **Sin IVA** |
-| Canales | Salón, Online, E-commerce, Mayoristas, Venta Externa, Directorio, Reparaciones | **Mayorista, Distribuidor, Consumidor Final, Gimnasios y Muestrarios, Sin Comisiones** |
+| Canales | Salón, Online, E-commerce, Mayoristas, Venta Externa, Directorio, Reparaciones | **Mayorista** (unifica Mayorista Vitalica + Distribuidor)**, Consumidor Final, Gimnasios y Muestrarios, Sin Comisiones, E-commerce** |
 | Empresa en Odoo | 1 | **2** |
-| Reglas propias | Contimarket, TUPI/PORTER, exclusiones de personas | Excluye Merchandising y Muestrario |
+| Reglas propias | Contimarket, TUPI/PORTER, exclusiones de personas | Excluye Merchandising y Muestrario, y los clientes Bambu Group y Garage (remisiones/cotizaciones) |
 | Facturas sin vendedor | No suman | **Sí suman** (aparecen como "Sin Vendedor": es venta real, ej. Gimnasios y Muestrarios) |
 
 ## Puesta en marcha

@@ -88,12 +88,13 @@ const CATEGORIAS_EXCLUIDAS = ["MERCHANDISING", "MUESTRARIO"];
 // 🚫 Productos/descripciones que no se traen.
 const PRODUCTOS_EXCLUIDOS = [];
 
-// 🚫 Clientes que no se traen (ej. facturas internas a la propia empresa).
-const CLIENTES_EXCLUIDOS = [];
+// 🚫 Clientes que no se traen. Bambu Group y Garage quedan fuera del informe:
+//    sus movimientos son remisiones/cotizaciones, no venta facturada.
+const CLIENTES_EXCLUIDOS = ["BAMBU", "GARAGE"];
 
 // 🎯 Canales del panel (los del informe actual de Vitálica).
 //    OJO: si se cambian, hay que cambiarlos también en index.html y en la web app.
-const CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
+const CANALES = ["Mayorista", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
 const CANAL_POR_DEFECTO = "Consumidor Final";
 
 // 🎯 Cómo se clasifica cada factura: se mira el EQUIPO de ventas de Odoo
@@ -107,8 +108,10 @@ const MAPEO_CANALES = [
   { match: "MUESTRARIO",       canal: "Gimnasios y Muestrarios" },
   { match: "GIMNASIO",         canal: "Gimnasios y Muestrarios" },
   { match: "MAYORISTA",        canal: "Mayorista" },
-  { match: "DISTRIBUIDOR",     canal: "Distribuidor" },
-  { match: "DISTRIBUCION",     canal: "Distribuidor" },
+  // Mayorista y Distribuidor se muestran unificados como Mayorista. El equipo
+  // original queda igual en la columna "Equipo Odoo" de DATA, por si hace falta.
+  { match: "DISTRIBUIDOR",     canal: "Mayorista" },
+  { match: "DISTRIBUCION",     canal: "Mayorista" },
   { match: "CONSUMIDOR FINAL", canal: "Consumidor Final" },
   // "Sales" es el equipo por defecto de Odoo. En el informe actual su facturación
   // entra en la página de Consumidor Final, así que se mapea ahí.
@@ -282,7 +285,7 @@ function actualizarDatosOdoo_(silencioso) {
   if (!sheetData) { sheetData = ss.insertSheet(HOJA_DESTINO); }
   // Planilla nueva: si todavía no está la hoja CONFIG, se arma sola con el mes en curso.
   if (!configSheet) { configSheet = ss.insertSheet(HOJA_CONFIG); crearEstructuraConfig(configSheet); SpreadsheetApp.flush(); }
-  if (sheetData.getMaxColumns() < 35) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 35 - sheetData.getMaxColumns());
+  if (sheetData.getMaxColumns() < 36) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 36 - sheetData.getMaxColumns());
 
   let valFin = configSheet.getRange("B4").getValue();
   let anioCorte = valFin instanceof Date ? valFin.getFullYear() : parseInt(valFin.toString().split("/")[2]);
@@ -404,12 +407,12 @@ function actualizarDatosOdoo_(silencioso) {
       var montoPanel = (MONTO_BASE === "SIN_IVA") ? subtotal : total;
 
       var precioPromedio = cantidad !== 0 ? (subtotal / cantidad) : 0;
-      rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, grupoEcom, line.move_id[0]]);
+      rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, grupoEcom, line.move_id[0], teamName]);
     });
   }
 
-  if (sheetData.getMaxColumns() < 35) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 35 - sheetData.getMaxColumns());
-  sheetData.getRange(1, 1, 1, 33).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo"]]).setFontWeight("bold");
+  if (sheetData.getMaxColumns() < 36) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 36 - sheetData.getMaxColumns());
+  sheetData.getRange(1, 1, 1, 34).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
   // Sello de última actualización: el dashboard lo muestra en el menú lateral.
   configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
