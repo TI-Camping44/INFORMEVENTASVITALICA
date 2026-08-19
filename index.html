@@ -191,8 +191,8 @@ const SHEET_PUB_BASE   = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRWQdg
 // página publicada de la planilla (Archivo ▸ Compartir ▸ Publicar en la web).
 // Para fijarlos a mano: abrí la planilla, hacé clic en la pestaña y copiá el
 // número que queda al final de la URL (#gid=XXXXXXX).
-let SHEET_GID_CONFIG = '';
-let SHEET_GID_DATA   = '';
+let SHEET_GID_CONFIG = '57741673';
+let SHEET_GID_DATA   = '690194065';
 // Nombres de las pestañas (los usa la búsqueda automática de gid).
 const HOJA_CONFIG = 'CONFIG';
 const HOJA_DATA   = 'DATA';
@@ -369,7 +369,8 @@ function fallo(html) {
 
 // Columnas de DATA (las escribe el Apps Script):
 // 1 Fecha · 2 Año · 3 Mes · 5 Documento · 6 Nro Movimiento · 13 Cliente · 15 Filtro Marca (categoría)
-// 17 Vendedor ("Nombre - Canal") · 18 Equipo/Canal · 19 Categoría Odoo · 20 Producto · 24 Cantidad · 30 TOTAL GS
+// 17 Vendedor ("Nombre - Canal") · 18 Equipo/Canal · 19 Categoría Odoo · 20 Producto · 24 Cantidad
+// 30 TOTAL GS · 32 ID Factura Odoo
 function normalizarData(filas) {
   const out = [];
   for (let i = 1; i < filas.length; i++) {
@@ -383,6 +384,10 @@ function normalizarData(filas) {
       fecha: f, ymd: ymd(f), anio: f.getFullYear(), mes: f.getMonth() + 1,
       esNC: String(r[5]).toUpperCase().includes("CR"),
       factura: String(r[6] || "").trim(),
+      // El Nro. impreso se repite entre clientes, así que para contar facturas se usa
+      // el ID interno de Odoo (columna 33). Si todavía no está, se arma una clave.
+      facturaId: String(r[32] || "").trim() ||
+                 (String(r[6] || "") + "|" + String(r[13] || "") + "|" + ymd(f)),
       cliente: String(r[13] || "").trim() || "Sin Cliente",
       categoria: String(r[15] || "").trim() || "Sin Categoría",
       vendedor: vend,
@@ -565,7 +570,7 @@ function agrupar(datos, campo, soloVentas) {
     const k = r[campo] || "(sin dato)";
     if (!acc[k]) acc[k] = { monto: 0, cantidad: 0, facturas: new Set(), clientes: new Set() };
     acc[k].monto += r.monto; acc[k].cantidad += r.cantidad;
-    if (r.factura) acc[k].facturas.add(r.factura);
+    if (r.facturaId) acc[k].facturas.add(r.facturaId);
     if (r.cliente) acc[k].clientes.add(r.cliente);
   });
   return Object.keys(acc).map(k => ({
@@ -614,7 +619,7 @@ function calcularKPIs(datos) {
   datos.forEach(r => {
     if (r.esNC) { nc += r.monto; return; }
     monto += r.monto; cantUnidades += r.cantidad; lineas++;
-    if (r.factura) facturas.add(r.factura);
+    if (r.facturaId) facturas.add(r.facturaId);
     if (r.cliente) { clientes.add(r.cliente); if (r.fecha >= corte) clientesActivos.add(r.cliente); }
   });
   // "Promedio de Tickets": el Looker usa el promedio (AVG) del monto sin IVA por
@@ -719,7 +724,7 @@ function renderNC(datos) {
   cont.innerHTML =
     '<div class="kpi-row">' + kpi("Total Notas de Crédito", gs(total), num(ncs.length) + " líneas", true) +
       kpi("Clientes con NC", num(new Set(ncs.map(r => r.cliente)).size), "") +
-      kpi("Documentos", num(new Set(ncs.map(r => r.factura)).size), "") + '</div>' +
+      kpi("Documentos", num(new Set(ncs.map(r => r.facturaId)).size), "") + '</div>' +
     '<div class="grid2">' +
       '<div class="card"><h3>Por Cliente</h3><div class="tbl-scroll"><table id="t-nc-cli"></table></div></div>' +
       '<div class="card"><h3>Por Vendedor</h3><table id="t-nc-vend"></table></div>' +
