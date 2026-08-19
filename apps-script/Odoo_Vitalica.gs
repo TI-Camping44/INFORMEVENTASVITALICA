@@ -305,7 +305,7 @@ function actualizarDatosOdoo_(silencioso) {
   if (!sheetData) { sheetData = ss.insertSheet(HOJA_DESTINO); }
   // Planilla nueva: si todavía no está la hoja CONFIG, se arma sola con el mes en curso.
   if (!configSheet) { configSheet = ss.insertSheet(HOJA_CONFIG); crearEstructuraConfig(configSheet); SpreadsheetApp.flush(); }
-  if (sheetData.getMaxColumns() < 36) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 36 - sheetData.getMaxColumns());
+  if (sheetData.getMaxColumns() < 37) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 37 - sheetData.getMaxColumns());
 
   let valFin = configSheet.getRange("B4").getValue();
   let anioCorte = valFin instanceof Date ? valFin.getFullYear() : parseInt(valFin.toString().split("/")[2]);
@@ -338,6 +338,11 @@ function actualizarDatosOdoo_(silencioso) {
     } catch (e) { CAMPO_ETIQUETA = ""; }
     var _moveFields = ["invoice_user_id", "team_id", "move_type", "name", "invoice_date", "invoice_date_due", "state"];
     if (CAMPO_ETIQUETA) _moveFields.push(CAMPO_ETIQUETA);
+    // 🏪 La SUCURSAL no está en el cliente de la factura, está en la dirección de
+    // entrega (Garage Cross factura a la casa matriz y entrega en cada GTC).
+    var HAY_ENVIO = false;
+    try { HAY_ENVIO = !!(_flds && _flds["partner_shipping_id"]); } catch (e) { HAY_ENVIO = false; }
+    if (HAY_ENVIO) _moveFields.push("partner_shipping_id");
     var moves = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "read", [[...new Set(moveIds)]], { fields: _moveFields }); var moveMap = {}; moves.forEach(m => moveMap[m.id] = m);
     var products = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "product.product", "read", [[...new Set(productIds)]], { fields: ["categ_id", "product_brand_id"] }); var productMap = {}; products.forEach(p => productMap[p.id] = p);
 
@@ -348,6 +353,7 @@ function actualizarDatosOdoo_(silencioso) {
       if (!move || move.state !== 'posted') return;
 
       var productoNombre = line.product_id ? line.product_id[1] : (line.name ? line.name : "Varios"), product = line.product_id ? productMap[line.product_id[0]] : null, marcaOriginal = (product && product.product_brand_id) ? product.product_brand_id[1] : "Sin Marca", categoriaOriginal = (product && product.categ_id) ? product.categ_id[1] : "", vendedor = move.invoice_user_id ? move.invoice_user_id[1] : "Sin Vendedor", teamName = move.team_id ? move.team_id[1] : "", cliente = line.partner_id ? line.partner_id[1] : "";
+      var entrega = (HAY_ENVIO && move.partner_shipping_id) ? move.partner_shipping_id[1] : "";
       var vNorm = vendedor.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""), pNorm = productoNombre.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""), cNormCliente = cliente.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""), tNorm = teamName.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
       var descNorm = (line.name || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
@@ -427,7 +433,7 @@ function actualizarDatosOdoo_(silencioso) {
       var montoPanel = (MONTO_BASE === "SIN_IVA") ? subtotal : total;
 
       var precioPromedio = cantidad !== 0 ? (subtotal / cantidad) : 0;
-      rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, grupoEcom, line.move_id[0], teamName]);
+      rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, grupoEcom, line.move_id[0], teamName, entrega]);
     });
   }
 
@@ -437,8 +443,8 @@ function actualizarDatosOdoo_(silencioso) {
     catch (e) { ss.toast("No se pudieron traer las remisiones: " + e.message, "⚠️", 10); }
   }
 
-  if (sheetData.getMaxColumns() < 36) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 36 - sheetData.getMaxColumns());
-  sheetData.getRange(1, 1, 1, 34).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo"]]).setFontWeight("bold");
+  if (sheetData.getMaxColumns() < 37) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 37 - sheetData.getMaxColumns());
+  sheetData.getRange(1, 1, 1, 35).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
   // Sello de última actualización: el dashboard lo muestra en el menú lateral.
   configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
@@ -463,7 +469,7 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
   if (REMISION_SOLO_SIN_FACTURAR) filtro.push(["invoice_status", "!=", "invoiced"]);
 
   var ordenes = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order", "search_read", [filtro],
-    { fields: ["name", "partner_id", "user_id", "team_id", "date_order", "state", "invoice_status"], limit: 20000 }) || [];
+    { fields: ["name", "partner_id", "partner_shipping_id", "user_id", "team_id", "date_order", "state", "invoice_status"], limit: 20000 }) || [];
   if (!ordenes.length) return 0;
 
   // Solo las que tienen una entrega en estado "Hecho" (las canceladas no cuentan).
@@ -506,6 +512,7 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
     var vendedor = orden.user_id ? orden.user_id[1] : "Sin Vendedor";
     var teamName = orden.team_id ? orden.team_id[1] : "";
     var cliente = orden.partner_id ? orden.partner_id[1] : "";
+    var entrega = orden.partner_shipping_id ? orden.partner_shipping_id[1] : "";
 
     var vNorm = normTxt_(vendedor), pNorm = normTxt_(productoNombre),
         cNormCliente = normTxt_(cliente), tNorm = normTxt_(teamName), descNorm = normTxt_(l.name);
@@ -541,7 +548,7 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
     rowsOut.push(["Odoo", fechaStr, Number(f[0]), Number(f[1]), Number(f[2]), "Remisión", orden.name || "",
       fechaStr, 0, "Contado", total, total, 1, cliente, marcaOriginal, marcaFinal, unidadNegocio,
       vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(l.discount || 0),
-      precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, "", "so-" + orden.id, teamName]);
+      precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, "", "so-" + orden.id, teamName, entrega]);
     agregadas++;
   });
   return agregadas;

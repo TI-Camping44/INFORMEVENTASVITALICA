@@ -483,13 +483,21 @@ function agruparClientes(filas) {
     const claveNombre = "n:" + norm(r.clienteBase);
     nuevo(claveNombre);
     if (r.ruc) unir(claveNombre, "r:" + r.ruc);
+    // El RUC de la dirección de entrega también une: en Lichton una sucursal
+    // tiene el RUC mal cargado (8008905-4 en vez de 80089050-7).
+    if (r.rucEntrega) unir(claveNombre, "r:" + r.rucEntrega);
   });
 
   const nombre = {};
   filas.forEach(r => {
     const g = raiz("n:" + norm(r.clienteBase));
     r.grupoCliente = g;
-    if (!nombre[g] || r.clienteBase.length < nombre[g].length) nombre[g] = r.clienteBase;
+    // Como nombre del grupo se toma el más corto: la factura suele traer el
+    // nombre largo ("... - GARAGE CROSS S.A. :80108473-3") y la dirección de
+    // entrega el limpio ("GARAGE CROSS SOCIEDAD ANONIMA").
+    [r.clienteBase, r.baseEntrega].forEach(cand => {
+      if (cand && cand !== "Sin Cliente" && (!nombre[g] || cand.length < nombre[g].length)) nombre[g] = cand;
+    });
   });
   filas.forEach(r => {
     r.cliente = nombre[r.grupoCliente] || r.clienteBase;
@@ -509,6 +517,12 @@ function normalizarData(filas) {
     if (contieneAlguna(r[19], CATEGORIAS_EXCLUIDAS_DASH)) continue;
     if (contieneAlguna(r[13], CLIENTES_EXCLUIDOS_DASH)) continue;
     const cli = partirCliente(r[13]);
+    // La sucursal casi nunca está en el cliente: está en la DIRECCIÓN DE ENTREGA
+    // (columna 35). Garage Cross factura a la casa matriz y entrega en cada GTC.
+    const env = partirCliente(r[34] || "");
+    const sucursal = env.sucursal
+      || (env.base && env.base !== "Sin Cliente" && norm(env.base) !== norm(cli.base) ? env.base : "")
+      || cli.sucursal;
     out.push({
       fecha: f, ymd: ymd(f), anio: f.getFullYear(), mes: f.getMonth() + 1,
       esNC: String(r[5]).toUpperCase().includes("CR"),
@@ -521,9 +535,11 @@ function normalizarData(filas) {
       cliente: cli.base,            // agruparClientes() lo reemplaza por la casa matriz
       clienteBase: cli.base,
       clienteCompleto: String(r[13] || "").trim() || "Sin Cliente",
-      sucursal: cli.sucursal,
+      sucursal: sucursal,
       clienteSucursal: cli.base,
       ruc: cli.ruc,
+      rucEntrega: env.ruc,
+      baseEntrega: env.base !== "Sin Cliente" ? env.base : "",
       grupoCliente: "",            // lo asigna agruparClientes()
       categoria: String(r[15] || "").trim() || "Sin Categoría",
       vendedor: vend,
