@@ -74,15 +74,24 @@ select, input[type=date], input[type=text] { padding: 6px 8px; border: 1px solid
         font-size: 11px; margin-bottom: 12px; }
 
 /* paneles y tablas */
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 12px; }
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px;
-        overflow-x: auto; }  /* en celular la tabla se desliza dentro de la tarjeta */
+/* min(520px, 100%) para que en pantallas angostas la columna se achique
+   en vez de desbordar y quedar cortada. */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr)); gap: 12px; }
+/* En pantallas muy anchas, 3 por fila como máximo: más de eso aprieta las tablas. */
+@media (min-width: 1900px) { .grid2 { grid-template-columns: repeat(3, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
 .card h3 { margin: 0 0 9px; font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
 .card h3 small { font-weight: 500; color: var(--muted); font-size: 10.5px; }
-table { width: 100%; border-collapse: collapse; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 th { background: var(--brand); color: #fff; font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px;
      padding: 6px 8px; text-align: left; font-weight: 700; }
 td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
+/* El nombre ocupa lo que sobra y se recorta con puntos suspensivos (el nombre
+   completo queda en el tooltip). Así ninguna tabla obliga a correrse al costado. */
+th.col-nombre, td.col-nombre { overflow: hidden; }
+td.col-nombre .txt { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+th.w-monto { width: 104px; } th.w-cant { width: 78px; } th.w-fact { width: 74px; } th.w-pct { width: 56px; }
+th.idx, td.idx { width: 30px; }
 tbody tr:nth-child(even) { background: var(--row-alt); }
 tbody tr.total-row { background: var(--brand-soft); font-weight: 800; }
 tbody tr.total-row td { border-top: 2px solid var(--brand); }
@@ -90,7 +99,7 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 .idx { color: var(--muted); width: 26px; }
 .bar-wrap { background: var(--gray-chip); border-radius: 3px; height: 6px; overflow: hidden; margin-top: 3px; }
 .bar { height: 100%; background: var(--brand); }
-.tbl-scroll { max-height: 340px; overflow-y: auto; overflow-x: auto; }
+.tbl-scroll { max-height: 420px; overflow-y: auto; }
 .pos { color: var(--green); font-weight: 700; }
 .neg { color: var(--red); font-weight: 700; }
 .chart-box { position: relative; height: 260px; }
@@ -139,7 +148,9 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   select, input[type=date], input[type=text], .ms { min-width: 0; width: 100%; }
   .ms-panel { min-width: 200px; }
   .kpi .k-val { font-size: 17px; }
-  .card table { min-width: 420px; }   /* se desliza en vez de apretujarse */
+  .card { overflow-x: auto; }          /* en celular la tabla se desliza dentro de la tarjeta */
+  .card table { min-width: 430px; }
+  .tbl-scroll { overflow-x: auto; }
 }
 </style>
 </head>
@@ -697,9 +708,9 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
     ? st.dir * String(a.clave).localeCompare(String(b.clave), "es")
     : st.dir * ((a[st.col] || 0) - (b[st.col] || 0)));
 
-  const th = (col, txt, clsNum) => {
+  const th = (col, txt, cls) => {
     const activa = st.col === col;
-    return "<th class='sortable" + (activa ? " sorted" : "") + (clsNum ? " num" : "") + "' onclick=\"ordenarTabla('" +
+    return "<th class='sortable " + (cls || "") + (activa ? " sorted" : "") + "' onclick=\"ordenarTabla('" +
       idTabla + "','" + col + "')\" title='Ordenar por " + txt + "'>" + txt +
       "<span class='arrow'>" + (activa ? (st.dir < 0 ? "▼" : "▲") : "▽") + "</span></th>";
   };
@@ -707,16 +718,18 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
   const campo = opts.campo || "";
   const top = filas.slice(0, opts.topN || TOP_N);
 
-  let h = "<thead><tr><th class='idx'>#</th>" + th("clave", encabezado) + th("monto", "Sin IVA PYG", true);
-  if (opts.cantidad) h += th("cantidad", "Cantidad", true);
-  if (opts.facturas) h += th("facturas", "Facturas", true);
-  h += "<th class='num'>%</th></tr></thead><tbody>";
+  let h = "<thead><tr><th class='idx'>#</th>" + th("clave", encabezado, "col-nombre") +
+    th("monto", "Sin IVA PYG", "num w-monto");
+  if (opts.cantidad) h += th("cantidad", "Cantidad", "num w-cant");
+  if (opts.facturas) h += th("facturas", "Facturas", "num w-fact");
+  h += "<th class='num w-pct'>%</th></tr></thead><tbody>";
 
   top.forEach((f, i) => {
     const sel = campo && (filtros[{ vendedor: "vendedores", canal: "canales", categoria: "categorias", producto: "productos", cliente: "clientes" }[campo]] || []).includes(f.clave);
     const click = campo ? " class='clickable" + (sel ? " total-row" : "") + "' onclick='filtrarPor(\"" + campo + "\", " +
       JSON.stringify(f.clave).replace(/'/g, "&#39;").replace(/"/g, "&quot;") + ")' title='Filtrar por " + esc(f.clave) + "'" : "";
-    h += "<tr" + click + "><td class='idx'>" + (i + 1) + "</td><td>" + esc(f.clave) +
+    h += "<tr" + click + "><td class='idx'>" + (i + 1) + "</td>" +
+      "<td class='col-nombre' title='" + esc(f.clave) + "'><span class='txt'>" + esc(f.clave) + "</span>" +
       "<div class='bar-wrap'><div class='bar' style='width:" + Math.min(100, Math.abs(f.monto) / max * 100) + "%'></div></div></td>" +
       "<td class='num'>" + num(f.monto) + "</td>";
     if (opts.cantidad) h += "<td class='num'>" + num(f.cantidad) + "</td>";
@@ -724,7 +737,7 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
     h += "<td class='num'>" + pct(f.monto, total).toFixed(1) + "%</td></tr>";
   });
 
-  h += "<tr class='total-row'><td></td><td>Total (" + filas.length + ")</td><td class='num'>" + num(total) + "</td>";
+  h += "<tr class='total-row'><td></td><td class='col-nombre'>Total (" + filas.length + ")</td><td class='num'>" + num(total) + "</td>";
   if (opts.cantidad) h += "<td class='num'>" + num(filas.reduce((s, f) => s + f.cantidad, 0)) + "</td>";
   if (opts.facturas) h += "<td class='num'>" + num(filas.reduce((s, f) => s + f.facturas, 0)) + "</td>";
   h += "<td class='num'>100%</td></tr></tbody>";
@@ -784,13 +797,13 @@ function renderDatos(datos) {
   const totalMes = filasMes.reduce((s, f) => s + f.monto, 0);
   const maxMes = Math.max(...filasMes.map(f => f.monto), 1);
   document.getElementById("t-meses").innerHTML = filasMes.length
-    ? "<thead><tr><th>Mes</th><th class='num'>Sin IVA PYG</th><th class='num'>%</th></tr></thead><tbody>" +
+    ? "<thead><tr><th class='col-nombre'>Mes</th><th class='num w-monto'>Sin IVA PYG</th><th class='num w-pct'>%</th></tr></thead><tbody>" +
       filasMes.map(f => "<tr class='clickable" + (String(filtros.mes) === String(f.mes) ? " total-row" : "") +
-        "' onclick=\"filtrarMes('" + f.mes + "')\" title='Filtrar por " + f.clave + "'><td>" + f.clave +
+        "' onclick=\"filtrarMes('" + f.mes + "')\" title='Filtrar por " + f.clave + "'><td class='col-nombre'>" + f.clave +
         "<div class='bar-wrap'><div class='bar' style='width:" +
         (f.monto / maxMes * 100) + "%'></div></div></td><td class='num'>" + num(f.monto) + "</td><td class='num'>" +
         pct(f.monto, totalMes).toFixed(1) + "%</td></tr>").join("") +
-      "<tr class='total-row'><td>Total</td><td class='num'>" + num(totalMes) + "</td><td class='num'>100%</td></tr></tbody>"
+      "<tr class='total-row'><td class='col-nombre'>Total</td><td class='num'>" + num(totalMes) + "</td><td class='num'>100%</td></tr></tbody>"
     : '<tbody><tr><td class="empty">Sin datos</td></tr></tbody>';
 
   document.getElementById("sub-productos").textContent = agrupar(datos, "producto", true).length + " productos";
