@@ -463,10 +463,32 @@ function partirCliente(nombre) {
     sucursal: coma > 0 ? sinRuc.slice(coma + 1).trim() : ""
   };
 }
+// Agrupa por RUC Y por nombre a la vez, porque en Odoo los datos vienen de las
+// dos formas y ninguna alcanza sola:
+//   · "GARAGE CROSS ... , GTC-LAMBARE - 80108473-3"  y
+//     "GARAGE CROSS ... - GARAGE CROSS S.A. :80108473-3 - 80108473-3"
+//     tienen nombres distintos pero el MISMO RUC.
+//   · "LICHTON S.A., FITWAY-CASA CENTRAL - 80089050-7" y
+//     "LICHTON S.A., FITWAY-SUCURSAL DEL SOL - 8008905-4"
+//     tienen el MISMO nombre pero distinto RUC (uno está mal cargado en Odoo).
+// Se unen las dos señales: si dos contactos comparten el RUC o el nombre base,
+// van al mismo grupo. El grupo se muestra con el nombre más corto que tenga.
 function agruparClientes(filas) {
+  const padre = {};
+  const raiz = k => { while (padre[k] !== k) { padre[k] = padre[padre[k]]; k = padre[k]; } return k; };
+  const nuevo = k => { if (padre[k] === undefined) padre[k] = k; return k; };
+  const unir = (a, b) => { const ra = raiz(nuevo(a)), rb = raiz(nuevo(b)); if (ra !== rb) padre[ra] = rb; };
+
+  filas.forEach(r => {
+    const claveNombre = "n:" + norm(r.clienteBase);
+    nuevo(claveNombre);
+    if (r.ruc) unir(claveNombre, "r:" + r.ruc);
+  });
+
   const nombre = {};
   filas.forEach(r => {
-    const g = r.grupoCliente;
+    const g = raiz("n:" + norm(r.clienteBase));
+    r.grupoCliente = g;
     if (!nombre[g] || r.clienteBase.length < nombre[g].length) nombre[g] = r.clienteBase;
   });
   filas.forEach(r => {
@@ -501,7 +523,8 @@ function normalizarData(filas) {
       clienteCompleto: String(r[13] || "").trim() || "Sin Cliente",
       sucursal: cli.sucursal,
       clienteSucursal: cli.base,
-      grupoCliente: cli.ruc || norm(cli.base),
+      ruc: cli.ruc,
+      grupoCliente: "",            // lo asigna agruparClientes()
       categoria: String(r[15] || "").trim() || "Sin Categoría",
       vendedor: vend,
       canal: (function () {

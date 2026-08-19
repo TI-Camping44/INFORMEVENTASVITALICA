@@ -77,6 +77,10 @@ const ESTADOS_REMISION = ["sale", "done"];
 //    Para no contar dos veces: si la orden ya se facturó, se saltea (esa venta
 //    ya viene por el lado de las facturas).
 const REMISION_SOLO_SIN_FACTURAR = true;
+//    Y solo cuentan las que TIENEN una entrega hecha. Hay órdenes con la entrega
+//    cancelada y rehecha después con otra orden (pasa con Bambú/BIGG): sin este
+//    filtro, esa mercadería se contaría dos veces.
+const REMISION_SOLO_ENTREGADAS = true;
 
 // 📅 Un cliente cuenta como ACTIVO si compró en los últimos N meses.
 const MESES_CLIENTE_ACTIVO = 3;
@@ -461,6 +465,21 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
   var ordenes = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order", "search_read", [filtro],
     { fields: ["name", "partner_id", "user_id", "team_id", "date_order", "state", "invoice_status"], limit: 20000 }) || [];
   if (!ordenes.length) return 0;
+
+  // Solo las que tienen una entrega en estado "Hecho" (las canceladas no cuentan).
+  if (REMISION_SOLO_ENTREGADAS) {
+    try {
+      var nombres = ordenes.map(function (o) { return o.name; });
+      var entregas = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "stock.picking", "search_read",
+        [[["origin", "in", nombres], ["state", "=", "done"]]], { fields: ["origin"], limit: 40000 }) || [];
+      var entregada = {};
+      entregas.forEach(function (e) { entregada[e.origin] = true; });
+      ordenes = ordenes.filter(function (o) { return entregada[o.name]; });
+      if (!ordenes.length) return 0;
+    } catch (e) {
+      // Si no se puede leer stock.picking, se sigue con todas las órdenes.
+    }
+  }
 
   var mapaOrden = {}, ids = [];
   ordenes.forEach(function (o) { mapaOrden[o.id] = o; ids.push(o.id); });
