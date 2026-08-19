@@ -26,8 +26,8 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-app)
 .sidebar { width: 210px; background: var(--side); color: #fff; padding: 14px 12px; flex-shrink: 0;
            display: flex; flex-direction: column; overflow-y: auto; }
 .sidebar-logo { width: 100%; max-width: 130px; margin: 0 auto 12px; display: block; background: #fff;
-                border-radius: 8px; padding: 8px; }
-.sidebar h2 { text-align: center; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+                border-radius: 8px; padding: 8px; cursor: pointer; }
+.sidebar h2 { cursor: pointer; text-align: center; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
               border-bottom: 2px solid #4a5262; padding-bottom: 8px; margin: 0 0 14px; }
 .menu-item { padding: 9px 11px; margin-bottom: 4px; border-radius: 6px; font-weight: 600; font-size: 11.5px;
              cursor: pointer; display: flex; align-items: center; gap: 7px; user-select: none; }
@@ -103,6 +103,9 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 .pos { color: var(--green); font-weight: 700; }
 .neg { color: var(--red); font-weight: 700; }
 .chart-box { position: relative; height: 260px; }
+/* Fila de gráficos arriba de todo: la evolución ancha y las dos tortas al lado. */
+.grid-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 12px; margin-bottom: 12px; }
+@media (min-width: 1250px) { .grid-charts { grid-template-columns: 2fr 1fr 1fr; } }
 .empty { color: var(--muted); font-style: italic; padding: 14px; text-align: center; }
 
 /* columnas ordenables y filas clicables */
@@ -164,8 +167,9 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
 
 <aside class="sidebar">
   <img src="VITALICA%20LOGO.png" alt="Vitálica" class="sidebar-logo"
+       onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)"
        onerror="if(!this.dataset.r){this.dataset.r=1;this.src='LOGO_VITALICA.png';}else{this.style.display='none';}">
-  <h2>Vitálica · BI</h2>
+  <h2 onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)">Vitálica · BI</h2>
   <div id="menu-canales"></div>
   <div class="menu-item" data-page="__objetivos" onclick="irA('__objetivos', this)">🎯 Objetivos</div>
   <div class="menu-item" data-page="__nc" onclick="irA('__nc', this)">↩️ Notas de Crédito</div>
@@ -203,6 +207,15 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
     <div class="note">Observación: importes sin IVA, excluyendo Merchandising y Muestrario.
       «Clientes activos» = clientes que compraron en los últimos <b id="nmeses-activo">3</b> meses.</div>
 
+    <div class="grid-charts">
+      <div class="card"><h3>Evolución de Ventas <small id="sub-evolucion"></small></h3>
+        <div class="chart-box"><canvas id="ch-evolucion"></canvas></div></div>
+      <div class="card"><h3>Contribución por Canal</h3>
+        <div class="chart-box"><canvas id="ch-canal"></canvas></div></div>
+      <div class="card"><h3>Contribución por Categoría</h3>
+        <div class="chart-box"><canvas id="ch-categoria"></canvas></div></div>
+    </div>
+
     <div class="grid2">
       <div class="card"><h3>Mejores Productos <small id="sub-productos"></small></h3>
         <div class="tbl-scroll"><table id="t-productos"></table></div></div>
@@ -216,10 +229,6 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
         <table id="t-categorias"></table></div>
       <div class="card"><h3>Canales de Venta</h3>
         <table id="t-canales"></table></div>
-      <div class="card"><h3>Contribución por Canal</h3>
-        <div class="chart-box"><canvas id="ch-canal"></canvas></div></div>
-      <div class="card"><h3>Contribución por Categoría</h3>
-        <div class="chart-box"><canvas id="ch-categoria"></canvas></div></div>
     </div>
   </div>
 
@@ -245,9 +254,13 @@ const HOJA_CONFIG = 'CONFIG';
 const HOJA_DATA   = 'DATA';
 
 // Canales del panel (mismos nombres que en el Apps Script).
-const CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
+const CANALES = ["Mayorista", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
+
+// Canales que se muestran unificados. Se aplica acá también (no solo en el Apps
+// Script) para que tenga efecto inmediato, sin esperar el re-sync de la planilla.
+const UNIFICAR_CANALES = { "Distribuidor": "Mayorista" };
 const ICONO_CANAL = {
-  "Mayorista": "🏢", "Distribuidor": "🚚", "Consumidor Final": "🛍️",
+  "Mayorista": "🏢", "Consumidor Final": "🛍️",
   "Gimnasios y Muestrarios": "🏋️", "Sin Comisiones": "📄", "E-commerce": "🛒"
 };
 
@@ -258,6 +271,8 @@ const MESES_CLIENTE_ACTIVO = 3;
 const VENDEDORES_EXCLUIDOS_DASH = [];
 // Categorías que no entran (el Apps Script ya las filtra; esto es el respaldo).
 const CATEGORIAS_EXCLUIDAS_DASH = ["MERCHANDISING", "MUESTRARIO"];
+// Clientes que no entran: sus movimientos son remisiones/cotizaciones, no venta.
+const CLIENTES_EXCLUIDOS_DASH = ["BAMBU", "GARAGE"];
 
 // Cuántas filas se muestran en las tablas de ranking.
 const TOP_N = 15;
@@ -428,6 +443,7 @@ function normalizarData(filas) {
     const vend = soloNombre(r[17]) || "Sin Vendedor";
     if (contieneAlguna(vend, VENDEDORES_EXCLUIDOS_DASH)) continue;
     if (contieneAlguna(r[19], CATEGORIAS_EXCLUIDAS_DASH)) continue;
+    if (contieneAlguna(r[13], CLIENTES_EXCLUIDOS_DASH)) continue;
     out.push({
       fecha: f, ymd: ymd(f), anio: f.getFullYear(), mes: f.getMonth() + 1,
       esNC: String(r[5]).toUpperCase().includes("CR"),
@@ -439,7 +455,11 @@ function normalizarData(filas) {
       cliente: String(r[13] || "").trim() || "Sin Cliente",
       categoria: String(r[15] || "").trim() || "Sin Categoría",
       vendedor: vend,
-      canal: String(r[18] || "").trim() || "Sin Canal",
+      canal: (function () {
+        const c = String(r[18] || "").trim() || "Sin Canal";
+        return UNIFICAR_CANALES[c] || c;
+      })(),
+      equipo: String(r[33] || r[18] || "").trim(),   // equipo de venta tal cual está en Odoo
       // El producto viene como "[5901330026461] Creatina Polvo OLIMP...": se saca el código.
       producto: String(r[20] || "").replace(/^\[[^\]]*\]\s*/, "").trim() || "Varios",
       cantidad: aNumero(r[24]),
@@ -549,6 +569,22 @@ function filtrarMes(m) {
   sel.value = (String(filtros.mes) === String(m)) ? "" : String(m);
   aplicar();
 }
+// Clic en el logo (o tecla Escape): vuelve al resumen y saca todos los filtros.
+function volverAlInicio() {
+  PAGINA = "__resumen";
+  document.querySelectorAll(".menu-item").forEach(m =>
+    m.classList.toggle("active", m.dataset.page === "__resumen"));
+  limpiarFiltros();
+}
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    // Si hay un desplegable abierto, Escape lo cierra; si no, limpia los filtros.
+    const abierto = document.querySelector(".ms.open");
+    if (abierto) { abierto.classList.remove("open"); return; }
+    volverAlInicio();
+  }
+});
+
 function limpiarFiltros() {
   filtros.mes = ""; filtros.cliente = ""; filtros.desde = ""; filtros.hasta = "";
   filtros.vendedores = []; filtros.canales = []; filtros.categorias = [];
@@ -811,6 +847,62 @@ function renderDatos(datos) {
 
   donut("ch-canal", porCanal.slice(0, 10));
   donut("ch-categoria", agrupar(datos, "categoria", true).slice(0, 10));
+  evolucion(datos);
+}
+
+// Evolución de ventas: por DÍA cuando se está mirando un mes puntual o un rango
+// corto, y por MES cuando se mira el año completo.
+function evolucion(datos) {
+  const cv = document.getElementById("ch-evolucion"); if (!cv) return;
+  const ventas = datos.filter(r => !r.esNC);
+  const porDia = !!filtros.mes || (filtros.desde && filtros.hasta &&
+                 (new Date(filtros.hasta) - new Date(filtros.desde)) <= 62 * 86400000);
+
+  const acc = {};
+  ventas.forEach(r => {
+    const k = porDia ? r.ymd : String(r.anio) + "-" + String(r.mes).padStart(2, "0");
+    acc[k] = (acc[k] || 0) + r.monto;
+  });
+  const claves = Object.keys(acc).sort();
+  const etiquetas = claves.map(k => porDia ? k.slice(8) + "/" + k.slice(5, 7) : MESES[+k.slice(5)]);
+  const valores = claves.map(k => acc[k]);
+  const sub = document.getElementById("sub-evolucion");
+  if (sub) sub.textContent = porDia ? "por día" : "por mes";
+
+  if (charts["ch-evolucion"]) charts["ch-evolucion"].destroy();
+  if (typeof Chart === "undefined") {
+    cv.parentElement.innerHTML = '<div class="empty">No se pudo cargar la librería de gráficos (CDN).</div>';
+    return;
+  }
+  if (!claves.length) return;
+
+  const prom = valores.reduce((a, b) => a + b, 0) / valores.length;
+  charts["ch-evolucion"] = new Chart(cv.getContext("2d"), {
+    data: {
+      labels: etiquetas,
+      datasets: [
+        { type: porDia ? "line" : "bar", label: "Venta sin IVA", data: valores,
+          backgroundColor: porDia ? "rgba(240,125,32,.15)" : "#f07d20",
+          borderColor: "#f07d20", borderWidth: 2, fill: porDia, tension: .3,
+          pointRadius: porDia ? 2 : 0, borderRadius: 3 },
+        { type: "line", label: "Promedio del período", data: valores.map(() => prom),
+          borderColor: "#8a94a6", borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, fill: false }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: true, labels: { boxWidth: 11, font: { size: 10.5 } } },
+        tooltip: { callbacks: { label: c => c.dataset.label + ": " + gs(c.parsed.y) } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkipPadding: 12 } },
+        y: { beginAtZero: true, grid: { color: "#eef1f5" },
+             ticks: { font: { size: 10 }, callback: v => (v / 1e6).toLocaleString("es-PY") + "M" } }
+      }
+    }
+  });
 }
 
 const PALETA = ["#f07d20", "#2f9e5f", "#3182ce", "#805ad5", "#d64545", "#d69e2e", "#319795", "#dd6b20", "#5a67d8", "#718096"];
