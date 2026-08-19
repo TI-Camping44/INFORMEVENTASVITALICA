@@ -103,6 +103,7 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 .pos { color: var(--green); font-weight: 700; }
 .neg { color: var(--red); font-weight: 700; }
 .chart-box { position: relative; height: 260px; }
+.chart-box .empty { display: flex; align-items: center; justify-content: center; height: 100%; }
 /* Fila de gráficos arriba de todo: la evolución ancha y las dos tortas al lado. */
 .grid-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 12px; margin-bottom: 12px; }
 @media (min-width: 1250px) { .grid-charts { grid-template-columns: 2fr 1fr 1fr; } }
@@ -209,11 +210,11 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
 
     <div class="grid-charts">
       <div class="card"><h3>Evolución de Ventas <small id="sub-evolucion"></small></h3>
-        <div class="chart-box"><canvas id="ch-evolucion"></canvas></div></div>
+        <div class="chart-box" data-chart="ch-evolucion"><canvas id="ch-evolucion"></canvas></div></div>
       <div class="card"><h3>Contribución por Canal</h3>
-        <div class="chart-box"><canvas id="ch-canal"></canvas></div></div>
+        <div class="chart-box" data-chart="ch-canal"><canvas id="ch-canal"></canvas></div></div>
       <div class="card"><h3>Contribución por Categoría</h3>
-        <div class="chart-box"><canvas id="ch-categoria"></canvas></div></div>
+        <div class="chart-box" data-chart="ch-categoria"><canvas id="ch-categoria"></canvas></div></div>
     </div>
 
     <div class="grid2">
@@ -271,8 +272,9 @@ const MESES_CLIENTE_ACTIVO = 3;
 const VENDEDORES_EXCLUIDOS_DASH = [];
 // Categorías que no entran (el Apps Script ya las filtra; esto es el respaldo).
 const CATEGORIAS_EXCLUIDAS_DASH = ["MERCHANDISING", "MUESTRARIO"];
-// Clientes que no entran: sus movimientos son remisiones/cotizaciones, no venta.
-const CLIENTES_EXCLUIDOS_DASH = ["BAMBU", "GARAGE"];
+// Clientes que no entran en el informe. Vacío = entran todos.
+// (Bambu, Garage Cross, GTC Bigg y Lichton/Fitway SÍ suman: son muestrarios.)
+const CLIENTES_EXCLUIDOS_DASH = [];
 
 // Cuántas filas se muestran en las tablas de ranking.
 const TOP_N = 15;
@@ -853,7 +855,6 @@ function renderDatos(datos) {
 // Evolución de ventas: por DÍA cuando se está mirando un mes puntual o un rango
 // corto, y por MES cuando se mira el año completo.
 function evolucion(datos) {
-  const cv = document.getElementById("ch-evolucion"); if (!cv) return;
   const ventas = datos.filter(r => !r.esNC);
   const porDia = !!filtros.mes || (filtros.desde && filtros.hasta &&
                  (new Date(filtros.hasta) - new Date(filtros.desde)) <= 62 * 86400000);
@@ -869,12 +870,13 @@ function evolucion(datos) {
   const sub = document.getElementById("sub-evolucion");
   if (sub) sub.textContent = porDia ? "por día" : "por mes";
 
-  if (charts["ch-evolucion"]) charts["ch-evolucion"].destroy();
+  if (charts["ch-evolucion"]) { charts["ch-evolucion"].destroy(); delete charts["ch-evolucion"]; }
   if (typeof Chart === "undefined") {
-    cv.parentElement.innerHTML = '<div class="empty">No se pudo cargar la librería de gráficos (CDN).</div>';
-    return;
+    return mensajeGrafico("ch-evolucion", "No se pudo cargar la librería de gráficos (CDN).");
   }
-  if (!claves.length) return;
+  if (!claves.length) return mensajeGrafico("ch-evolucion", "Sin datos con estos filtros");
+  const caja = cajaGrafico("ch-evolucion"); if (!caja) return;
+  const cv = document.getElementById("ch-evolucion"); if (!cv) return;
 
   const prom = valores.reduce((a, b) => a + b, 0) / valores.length;
   charts["ch-evolucion"] = new Chart(cv.getContext("2d"), {
@@ -905,17 +907,33 @@ function evolucion(datos) {
   });
 }
 
+// Los gráficos viven dentro de un .chart-box. Cuando no hay nada que dibujar se
+// pone un mensaje en su lugar (igual que las tablas), y cuando vuelve a haber
+// datos se repone el <canvas>, que el mensaje se lo había llevado puesto.
+function cajaGrafico(id) {
+  const cv = document.getElementById(id);
+  if (cv) return cv.parentElement;
+  const caja = document.querySelector('[data-chart="' + id + '"]');
+  if (!caja) return null;
+  caja.innerHTML = '<canvas id="' + id + '"></canvas>';
+  return caja;
+}
+function mensajeGrafico(id, texto) {
+  const caja = cajaGrafico(id);
+  if (caja) caja.innerHTML = '<div class="empty">' + texto + '</div>';
+}
+
 const PALETA = ["#f07d20", "#2f9e5f", "#3182ce", "#805ad5", "#d64545", "#d69e2e", "#319795", "#dd6b20", "#5a67d8", "#718096"];
 function donut(id, filas) {
-  const cv = document.getElementById(id); if (!cv) return;
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
   if (typeof Chart === "undefined") {
     // El gráfico viene de un CDN; si no está disponible, el resto del panel sigue funcionando.
-    cv.parentElement.innerHTML = '<div class="empty">No se pudo cargar la librería de gráficos (CDN). ' +
-      'Las tablas de arriba tienen la misma información.</div>';
-    return;
+    return mensajeGrafico(id, "No se pudo cargar la librería de gráficos (CDN). " +
+      "Las tablas de abajo tienen la misma información.");
   }
-  if (charts[id]) charts[id].destroy();
-  if (!filas.length) return;
+  if (!filas.length) return mensajeGrafico(id, "Sin datos con estos filtros");
+  const caja = cajaGrafico(id); if (!caja) return;
+  const cv = document.getElementById(id); if (!cv) return;
   const total = filas.reduce((s, f) => s + f.monto, 0) || 1;
   charts[id] = new Chart(cv.getContext("2d"), {
     type: "doughnut",

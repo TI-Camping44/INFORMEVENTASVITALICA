@@ -88,9 +88,10 @@ const CATEGORIAS_EXCLUIDAS = ["MERCHANDISING", "MUESTRARIO"];
 // 🚫 Productos/descripciones que no se traen.
 const PRODUCTOS_EXCLUIDOS = [];
 
-// 🚫 Clientes que no se traen. Bambu Group y Garage quedan fuera del informe:
-//    sus movimientos son remisiones/cotizaciones, no venta facturada.
-const CLIENTES_EXCLUIDOS = ["BAMBU", "GARAGE"];
+// 🚫 Clientes que no se traen. Vacío = se traen todos.
+//    Bambu, Garage Cross, GTC Bigg y Lichton/Fitway SÍ tienen que sumar:
+//    son muestrarios, así que no van acá.
+const CLIENTES_EXCLUIDOS = [];
 
 // 🎯 Canales del panel (los del informe actual de Vitálica).
 //    OJO: si se cambian, hay que cambiarlos también en index.html y en la web app.
