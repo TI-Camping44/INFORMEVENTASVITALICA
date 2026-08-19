@@ -124,9 +124,12 @@ const GRUPO_ECOMMERCE_RESTO = "";
 
 // 🏷️ Líneas de negocio de Vitálica = categorías del informe actual.
 //    (Con EJE_PRINCIPAL = "CATEGORIA" el panel trabaja con estas.)
+//    Nombres tal cual los tiene Odoo (salidos del descubrimiento).
 const LISTA_MARCAS = [
-  "Proteínas", "Creatinas", "Pre Entrenos", "Vitaminas y Minerales",
-  "Ácidos Grasos", "Bebidas Isotónicas", "Salud Articular", "Descuentos Comerciales"
+  "Proteínas", "Pre Entrenos", "Creatinas", "Bebidas Isotónicos",
+  "Vitaminas y Minerales", "Ácidos Grasos", "Salud Articular",
+  "Proteína Vitálica", "Descuentos Comerciales",
+  "Accesorios", "Indumentaria Vitalica", "Hidratación"
 ];
 
 // 🏷️ Segunda línea de negocio (en Camping eran Armas y Municiones).
@@ -137,8 +140,16 @@ const LISTA_ARMAS = [];
 //    con el nombre del valor. Sirve para unificar nombres de Odoo.
 const MARCA_ALIAS = { "DESCUENTOS COMERCIALES": "Descuentos Comerciales" };
 
-// 🏷️ Si la CATEGORÍA de Odoo contiene la clave, el eje pasa a ser el valor.
-const CATEGORIA_A_MARCA = {};
+// Nota: la categoría "ALL / Proteína / VITALICA" es la línea propia de Vitálica;
+// como su último tramo es "VITALICA" a secas, se renombra con CATEGORIA_A_MARCA.
+
+// 🏷️ Si la CATEGORÍA COMPLETA de Odoo contiene la clave, el eje pasa a ser el valor.
+//    Se evalúa antes que el último tramo, así se arreglan las categorías cuyo
+//    último tramo no dice nada por sí solo.
+const CATEGORIA_A_MARCA = {
+  "PROTEINA / VITALICA": "Proteína Vitálica",
+  "NO USAR": "Sin Categoría"
+};
 
 // 💸 Palabras que marcan una línea como descuento (resta venta).
 const PALABRAS_DESCUENTO = ["DESCUENTO"];
@@ -169,6 +180,10 @@ function obtenerMarcaReal(categoriaOdoo, marcaOdoo, descripcionOdoo, productoNom
   // 0) Eje por CATEGORÍA (Vitálica): se usa el último tramo de la categoría de Odoo.
   //    "ALL / Suplementos (Padre) / Proteínas"  ➜  "Proteínas"
   if (EJE_PRINCIPAL === "CATEGORIA") {
+    // Primero la categoría COMPLETA (ej. "ALL / Proteína / VITALICA").
+    for (var claveFull in CATEGORIA_A_MARCA) {
+      if (cat.indexOf(normTxt_(claveFull)) >= 0) return CATEGORIA_A_MARCA[claveFull];
+    }
     var partes = (categoriaOdoo || "").toString().split("/");
     var hoja = partes[partes.length - 1].trim();
     if (hoja) {

@@ -24,7 +24,7 @@
 // gid de la hoja CONFIG publicada (el mismo que usa el dashboard).
 // ⚠️ COMPLETAR con la planilla de VITÁLICA: Archivo ▸ Compartir ▸ Publicar en la web.
 //    Es la misma URL base que usa el index.html del dashboard.
-const WA_PUB_BASE = "PEGAR_AQUI_LA_URL_PUB_DE_VITALICA";
+const WA_PUB_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRWQdgMG_3FJEWqg8fzF1CAkqftbsv7M3a9UpzRUriZyXBoDTbPamjJIomO-v4Mt7V7wOxVtm5APoRD/pub";
 const WA_GID_CONFIG = "PEGAR_GID_CONFIG";
 const WA_GID_DATA = "PEGAR_GID_DATA";   // hoja DATA (ventas de Odoo). Col 18 = Vendedor.
 const WA_HOJA = "CONFIG";
