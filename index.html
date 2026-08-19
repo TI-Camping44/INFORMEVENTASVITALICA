@@ -186,15 +186,15 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 // ---------------------------------------------------------------------
 // URLs de la planilla publicada (Archivo ▸ Compartir ▸ Publicar en la web).
 // Tienen que ser las mismas hojas que llena el Apps Script: CONFIG y DATA.
-const SHEET_PUB_BASE   = 'PEGAR_AQUI_LA_URL_PUB_DE_VITALICA';
+const SHEET_PUB_BASE   = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRWQdgMG_3FJEWqg8fzF1CAkqftbsv7M3a9UpzRUriZyXBoDTbPamjJIomO-v4Mt7V7wOxVtm5APoRD/pub';
 const SHEET_GID_CONFIG = 'PEGAR_GID_CONFIG';
 const SHEET_GID_DATA   = 'PEGAR_GID_DATA';
 
 // Canales del panel (mismos nombres que en el Apps Script).
-const CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones"];
+const CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
 const ICONO_CANAL = {
   "Mayorista": "🏢", "Distribuidor": "🚚", "Consumidor Final": "🛍️",
-  "Gimnasios y Muestrarios": "🏋️", "Sin Comisiones": "📄"
+  "Gimnasios y Muestrarios": "🏋️", "Sin Comisiones": "📄", "E-commerce": "🛒"
 };
 
 // Un cliente es ACTIVO si compró en los últimos N meses.
