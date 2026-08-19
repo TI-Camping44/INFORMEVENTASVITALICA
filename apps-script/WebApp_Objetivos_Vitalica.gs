@@ -28,7 +28,7 @@ const WA_PUB_BASE = "PEGAR_AQUI_LA_URL_PUB_DE_VITALICA";
 const WA_GID_CONFIG = "PEGAR_GID_CONFIG";
 const WA_GID_DATA = "PEGAR_GID_DATA";   // hoja DATA (ventas de Odoo). Col 18 = Vendedor.
 const WA_HOJA = "CONFIG";
-const WA_CANALES = ["Salon", "Online", "E-commerce", "Mayoristas", "Venta Externa", "Directorio", "Reparaciones"];
+const WA_CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones"];
 const WA_MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 // Vitálica arranca sin histórico previo: se va llenando mes a mes desde esta web app.
 const WA_SEED_B64 = "";
@@ -225,7 +225,7 @@ function wa_parseVivo(filas) {
     }
   }
   // Asegura los 6 canales base
-  WA_CANALES.forEach(function (cn) { if (cn !== "Reparaciones" && !(cn in canalMap)) out.canales.push({ canal: cn, monto: 0 }); });
+  WA_CANALES.forEach(function (cn) { if (!(cn in canalMap)) out.canales.push({ canal: cn, monto: 0 }); });
 
   // E-commerce = Tupi + Porter + Contimarket(=Julia Olmedo). Tupi y Porter son clientes (no están en
   // la lista de vendedores de Odoo), así que los aseguramos en 0. Contimarket NO se agrega aparte:
@@ -245,7 +245,7 @@ function wa_parseVivo(filas) {
       var lista = [];
       for (var rr = 3; rr < filas.length; rr++) {
         var marc = String((filas[rr] && filas[rr][col]) || "").trim();
-        if (!marc || marc.indexOf("---") === 0 || marc.indexOf("[") === 0 || marc.toUpperCase() === "MARCA" || marc.toUpperCase() === "MARCAS") continue;
+        if (!marc || marc.indexOf("---") === 0 || marc.indexOf("[") === 0 || ["MARCA","MARCAS","CATEGORIA","CATEGORÍA","CATEGORIAS","CATEGORÍAS"].indexOf(marc.toUpperCase()) >= 0) continue;
         lista.push({ marca: marc, meta: wa_handleNum(filas[rr][col + 1]), fila: rr, col: col });
       }
       if (lista.length) out.marcasPorVendedor[vClean] = { vendedor: vend, col: col, marcas: lista };
@@ -575,10 +575,10 @@ function WA_HTML() {
 '</div></div>' +
 '<div id="mkPickerBg" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:31" onclick="cerrarMkPicker()">' +
 '<div style="max-width:520px;margin:50px auto;background:#fff;border-radius:14px;padding:16px;max-height:78vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)" onclick="event.stopPropagation()">' +
-'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="margin:0;font-size:15px;font-weight:800">Agregar marca a <span id="mkPickerVend" style="color:#0b7d72"></span></h2><button class="btn btn-s" style="padding:5px 10px" onclick="cerrarMkPicker()">✕</button></div>' +
-'<input id="mkPickerSearch" class="inp" placeholder="🔍 Buscar marca…" oninput="renderMkPicker()">' +
+'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h2 style="margin:0;font-size:15px;font-weight:800">Agregar categoría a <span id="mkPickerVend" style="color:#0b7d72"></span></h2><button class="btn btn-s" style="padding:5px 10px" onclick="cerrarMkPicker()">✕</button></div>' +
+'<input id="mkPickerSearch" class="inp" placeholder="🔍 Buscar categoría…" oninput="renderMkPicker()">' +
 '<div id="mkPickerList" style="overflow:auto;margin-top:10px;flex:1"></div>' +
-'<div style="display:flex;gap:6px;margin-top:10px"><input id="mkPickerNueva" class="inp" style="flex:1" placeholder="…o escribí una marca nueva"><button class="btn btn-p" onclick="agregarMarcaNueva()">Agregar</button></div>' +
+'<div style="display:flex;gap:6px;margin-top:10px"><input id="mkPickerNueva" class="inp" style="flex:1" placeholder="…o escribí una categoría nueva"><button class="btn btn-p" onclick="agregarMarcaNueva()">Agregar</button></div>' +
 '</div></div>' +
 '<div class="wrap" id="app" style="display:none">' +
 '<div id="boundFlag" style="display:none;background:#fff5f5;border:1px solid #feb2b2;color:#9b2c2c;padding:10px 14px;border-radius:10px;font-size:12.5px;margin-bottom:12px;line-height:1.5"></div>' +
@@ -601,7 +601,7 @@ function WA_HTML() {
 '<div><label class="f">Días transcurridos</label><input class="inp" id="dTrans" disabled></div>' +
 '</div><div class="hint">💡 La <b>Fecha Corte</b> solo mueve el cálculo del mes (el %). Para pasar a otro mes usá <b>“Preparar mes nuevo”</b> arriba. Los días hábiles se calculan solos (fechas + feriados).</div></div></div>' +
 
-'<div class="card"><div class="hd"><h2>👥 Vendedores y marcas</h2><span id="vendCount" class="chip" style="background:#eef1f6;color:#7b8794"></span></div><div class="bd">' +
+'<div class="card"><div class="hd"><h2>👥 Vendedores y categorías</h2><span id="vendCount" class="chip" style="background:#eef1f6;color:#7b8794"></span></div><div class="bd">' +
 '<div class="toolbar">' +
 '<div class="search"><span class="ic">🔍</span><input id="buscar" placeholder="Buscar vendedor…" oninput="filtrar()"></div>' +
 '<button class="btn btn-s" id="btnAdd" onclick="abrirPicker()">＋ Vendedor</button>' +
@@ -671,7 +671,7 @@ function WA_HTML() {
 '  var row=document.createElement("div");row.className="vend";' +
 '  row.innerHTML=' +
 '   "<div><input class=\\"name\\" list=\\"odooVends\\" placeholder=\\"nombre (elegí de Odoo)\\" "+d+" value=\\""+esc(v.nombre)+"\\" oninput=\\"renombrarVend("+i+",this.value)\\">"+' +
-'     "<div class=\\"mkline\\"><span class=\\"mktog\\" onclick=\\"toggleMk("+i+")\\">🏷️ marcas <b>"+conObj+"</b>/"+totM+"</span>"+' +
+'     "<div class=\\"mkline\\"><span class=\\"mktog\\" onclick=\\"toggleMk("+i+")\\">🏷️ categorías <b>"+conObj+"</b>/"+totM+"</span>"+' +
 '      (ro?"":" <span class=\\"mktog\\" style=\\"background:#eef2f7;border-color:#dfe6ef;color:#4a5568\\" onclick=\\"duplicarVend("+i+")\\">⧉ duplicar</span>")+' +
 '      "<div class=\\"mkpanel\\" id=\\"mk"+i+"\\" style=\\"display:none\\"></div></div></div>"+' +
 '   "<div class=\\"chanwrap\\"><span class=\\"cdot\\" id=\\"cdot"+i+"\\" style=\\"background:"+col(v.canal)+"\\"></span>"+' +
@@ -689,14 +689,14 @@ function WA_HTML() {
 'function marcaPanel(i){' +
 ' var ro=false;var v=VISTA.vendedores[i];var vName=v.nombre;var mk=VISTA.marcasPorVendedor[vName];' +
 ' var jk=jkey(vName);' +
-' var head="<div class=\\"mkbar\\"><input class=\\"q\\" placeholder=\\"filtrar marcas…\\" oninput=\\"filtMk("+i+",this.value)\\">"+' +
-'   (ro?"":"<button class=\\"btn btn-s\\" style=\\"padding:6px 10px\\" onclick=\\"abrirMkPicker("+i+")\\">＋ marca</button>")+"</div>";' +
+' var head="<div class=\\"mkbar\\"><input class=\\"q\\" placeholder=\\"filtrar categorías…\\" oninput=\\"filtMk("+i+",this.value)\\">"+' +
+'   (ro?"":"<button class=\\"btn btn-s\\" style=\\"padding:6px 10px\\" onclick=\\"abrirMkPicker("+i+")\\">＋ categoría</button>")+"</div>";' +
 ' var grid="<div class=\\"mkgrid\\" id=\\"mkg"+i+"\\">"+marcaRows(i)+"</div>";' +
 ' return head+grid;' +
 '}' +
 'function marcaRows(i){' +
 ' var ro=false;var vName=VISTA.vendedores[i].nombre;var mk=VISTA.marcasPorVendedor[vName];var jk=jkey(vName);' +
-' if(!mk||!mk.marcas.length)return "<div style=\\"color:#7b8794;font-size:12px;padding:6px\\">Sin marcas.</div>";' +
+' if(!mk||!mk.marcas.length)return "<div style=\\"color:#7b8794;font-size:12px;padding:6px\\">Sin categorías.</div>";' +
 ' var q=(mk._q||"");' +
 ' return mk.marcas.map(function(m,mi){' +
 '   if(q&&(m.marca||"").toLowerCase().indexOf(q)<0)return "";' +
@@ -716,13 +716,13 @@ function WA_HTML() {
 ' var faltan=MARCAS_MASTER.filter(function(n){return !tiene[String(n).trim().toUpperCase()];});' +
 ' var vis=faltan.filter(function(n){return !q||n.toLowerCase().indexOf(q)>=0;});' +
 ' var cont=document.getElementById("mkPickerList");' +
-' var head="<div style=\\"font-size:11.5px;color:#718096;margin-bottom:6px;font-weight:700\\">Marcas de la lista que faltan: "+faltan.length+"</div>";' +
-' if(!MARCAS_MASTER.length){cont.innerHTML="<div style=\\"color:#718096;font-size:12.5px;padding:6px\\">Escribí la marca abajo y tocá Agregar.</div>";return;}' +
-' if(!vis.length){cont.innerHTML=head+"<div style=\\"color:#2f855a;font-size:12.5px;padding:8px\\">"+(faltan.length?"Sin resultados.":"✅ Ya tiene todas las marcas de la lista. Podés agregar una nueva abajo.")+"</div>";return;}' +
+' var head="<div style=\\"font-size:11.5px;color:#718096;margin-bottom:6px;font-weight:700\\">Categorías de la lista que faltan: "+faltan.length+"</div>";' +
+' if(!MARCAS_MASTER.length){cont.innerHTML="<div style=\\"color:#718096;font-size:12.5px;padding:6px\\">Escribí la categoría abajo y tocá Agregar.</div>";return;}' +
+' if(!vis.length){cont.innerHTML=head+"<div style=\\"color:#2f855a;font-size:12.5px;padding:8px\\">"+(faltan.length?"Sin resultados.":"✅ Ya tiene todas las categorías de la lista. Podés agregar una nueva abajo.")+"</div>";return;}' +
 ' cont.innerHTML=head+vis.map(function(n){return "<div style=\\"display:flex;justify-content:space-between;align-items:center;padding:7px 6px;border-bottom:1px solid #f1f5f9\\"><span style=\\"font-size:13px\\">"+esc(n)+"</span><button class=\\"btn btn-p\\" style=\\"padding:5px 12px;flex:none\\" data-n=\\""+esc(n)+"\\" onclick=\\"agregarMarcaAV(this.getAttribute(\'data-n\'))\\">+ agregar</button></div>";}).join("");' +
 '}' +
 'function agregarMarcaAV(nombre){var i=MK_PICKER_VI;var vName=VISTA.vendedores[i].nombre;if(!VISTA.marcasPorVendedor[vName])VISTA.marcasPorVendedor[vName]={vendedor:vName,col:-1,marcas:[]};VISTA.marcasPorVendedor[vName].marcas.push({marca:nombre,meta:0,fila:-1,col:-1});var g=document.getElementById("mkg"+i);if(g)g.innerHTML=marcaRows(i);renderMkPicker();toast("Marca agregada: "+nombre,"ok");}' +
-'function agregarMarcaNueva(){var v=document.getElementById("mkPickerNueva").value.trim();if(!v){toast("Escribí el nombre de la marca","err");return;}agregarMarcaAV(v);document.getElementById("mkPickerNueva").value="";}' +
+'function agregarMarcaNueva(){var v=document.getElementById("mkPickerNueva").value.trim();if(!v){toast("Escribí el nombre de la categoría","err");return;}agregarMarcaAV(v);document.getElementById("mkPickerNueva").value="";}' +
 
 'function addVend(){VISTA.vendedores.push({nombre:"",canal:"",total:0,fila:-1});FILTRO="";document.getElementById("buscar").value="";renderVend(false);}' +
 'function guessCanal(n){var u=(n||"").toUpperCase();if(u.indexOf("CONTIMARKET")>=0||u.indexOf("TUPI")>=0||u.indexOf("PORTER")>=0)return "E-commerce";return "";}' +

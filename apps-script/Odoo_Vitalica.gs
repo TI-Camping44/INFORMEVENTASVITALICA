@@ -43,12 +43,28 @@ const HOJA_DESCUBRIMIENTO = "DESCUBRIMIENTO";
 // ==================================================================
 //  REGLAS DE NEGOCIO DE VITÁLICA   (todo lo editable vive acá abajo)
 // ------------------------------------------------------------------
-//  Estas listas arrancan casi vacías a propósito: las de Camping 44
-//  (Contimarket, TUPI/PORTER, Jorge Vidal, Bianca/Irene/Cesar, etc.)
-//  NO aplican a Vitálica. Corré primero  🔎 Descubrir estructura de
-//  Vitálica  para ver los equipos, vendedores y marcas REALES que hay
-//  en Odoo, y recién ahí completar estas listas.
+//  Cargadas con lo que muestra el informe (Looker) actual de Vitálica:
+//  importes SIN IVA, sin Merchandising ni Muestrario, canales Mayorista /
+//  Distribuidor / Consumidor Final / Gimnasios y Muestrarios / Sin Comisiones
+//  y el análisis por CATEGORÍA de producto (Proteínas, Creatinas, ...).
+//  Para confirmar los nombres exactos que tiene Odoo, corré
+//  🔎 Descubrir estructura de Vitálica y ajustá estas listas.
 // ==================================================================
+
+// 💰 Base de los importes del panel:
+//    "SIN_IVA"  = subtotal, igual que el Looker actual ("Monto Fact. Año s/IVA")
+//    "CON_IVA"  = total con impuestos
+const MONTO_BASE = "SIN_IVA";
+
+// 🏷️ Eje principal del análisis:
+//    "CATEGORIA" = Vitálica (Proteínas, Creatinas, Pre Entrenos...)
+//    "MARCA"     = Camping 44 (marca del producto)
+//    Con "CATEGORIA" se toma el último tramo de la categoría de Odoo
+//    ("ALL / Suplementos (Padre) / Proteínas"  ➜  "Proteínas").
+const EJE_PRINCIPAL = "CATEGORIA";
+
+// 📅 Un cliente cuenta como ACTIVO si compró en los últimos N meses.
+const MESES_CLIENTE_ACTIVO = 3;
 
 // 🚫 Vendedores que no se traen NUNCA (administrativos, sin comisión...).
 //    Coincidencia por "contiene", en MAYÚSCULAS y sin tildes.
@@ -57,64 +73,67 @@ const VENDEDORES_EXCLUIDOS = [];
 // 🚫 Vendedores que sí se traen a DATA pero NO se muestran en tablas/rankings.
 const VENDEDORES_IGNORADOS = [];
 
-// 🚫 Equipos de venta de Odoo excluidos del panel (ej: "No Pagar Comisión").
-const EQUIPOS_EXCLUIDOS = ["NO PAGAR"];
+// 🚫 Equipos de venta de Odoo excluidos del panel.
+const EQUIPOS_EXCLUIDOS = [];
 
-// 🚫 Productos/descripciones que no se traen (ej: "MORATORIO").
+// 🚫 Las facturas SIN vendedor asignado, ¿se descartan?
+//    En Vitálica NO: hay ventas reales sin vendedor (ej. Gimnasios y Muestrarios),
+//    y en el Looker aparecen como "null". Se muestran como "Sin Vendedor".
+const EXCLUIR_FACTURAS_SIN_VENDEDOR = false;
+
+// 🚫 Categorías que no entran en el informe.
+//    El Looker actual aclara: "Filtrado excluyendo Merchandising y Muestrario".
+const CATEGORIAS_EXCLUIDAS = ["MERCHANDISING", "MUESTRARIO"];
+
+// 🚫 Productos/descripciones que no se traen.
 const PRODUCTOS_EXCLUIDOS = [];
 
-// 🚫 Clientes que no se traen (ej: facturas internas a la propia empresa).
-//    Ojo: las facturas SIN vendedor real ya se descartan solas, así que esta
-//    lista solo hace falta para casos puntuales. Ej: ["VITALICA SA"]
+// 🚫 Clientes que no se traen (ej. facturas internas a la propia empresa).
 const CLIENTES_EXCLUIDOS = [];
 
-// 🎯 Canales del panel. El index.html y la web app de objetivos usan estos
-//    mismos nombres, así que conviene no renombrarlos sin tocar los otros 2.
-const CANALES = ["Salon", "Online", "E-commerce", "Mayoristas", "Venta Externa", "Directorio", "Reparaciones"];
-const CANAL_POR_DEFECTO = "Salon";
+// 🎯 Canales del panel (los del informe actual de Vitálica).
+//    OJO: si se cambian, hay que cambiarlos también en index.html y en la web app.
+const CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones"];
+const CANAL_POR_DEFECTO = "Consumidor Final";
 
 // 🎯 Cómo se clasifica cada factura: se mira el EQUIPO de ventas de Odoo
 //    (y si no, el nombre del vendedor). Primera coincidencia gana.
+//    Equipos vistos en el informe actual: Mayorista Vitalica · Distribuidor ·
+//    Consumidor final · Consumidor Final Vitalica · Sin Comisiones.
 const MAPEO_CANALES = [
-  { match: "MAYORISTA",   canal: "Mayoristas" },
-  { match: "DISTRIBUCION", canal: "Mayoristas" },
-  { match: "E-COMMERCE",  canal: "E-commerce" },
-  { match: "ECOMMERCE",   canal: "E-commerce" },
-  { match: "TIENDA ONLINE", canal: "E-commerce" },
-  { match: "ONLINE",      canal: "Online" },
-  { match: "EXTERNA",     canal: "Venta Externa" },
-  { match: "VISITADOR",   canal: "Venta Externa" },
-  { match: "DIRECTORIO",  canal: "Directorio" },
-  { match: "LICITACION",  canal: "Directorio" },
-  { match: "SALON",       canal: "Salon" },
-  { match: "MOSTRADOR",   canal: "Salon" }
+  { match: "MAYORISTA",        canal: "Mayorista" },
+  { match: "DISTRIBUIDOR",     canal: "Distribuidor" },
+  { match: "DISTRIBUCION",     canal: "Distribuidor" },
+  { match: "CONSUMIDOR FINAL", canal: "Consumidor Final" },
+  { match: "GIMNASIO",         canal: "Gimnasios y Muestrarios" },
+  { match: "MUESTRARIO",       canal: "Gimnasios y Muestrarios" },
+  { match: "SIN COMISION",     canal: "Sin Comisiones" }
 ];
 
-// 🛒 Clientes que se consideran E-commerce por nombre (en Camping eran
-//    TUPI y PORTER). Si Vitálica vende por marketplaces, van acá.
+// 🛒 Clientes de e-commerce con nombre propio (Vitálica hoy no usa este bloque).
 const CLIENTES_ECOMMERCE = [];
-
-// 🛒 Nombre del grupo donde cae el resto del E-commerce (facturas a
-//    consumidores finales). En Camping era "Contimarket". Vacío = no agrupar.
 const GRUPO_ECOMMERCE_RESTO = "";
 
-// 🏷️ Marcas de Vitálica (completar con el resultado del descubrimiento).
-const LISTA_MARCAS = [];
+// 🏷️ Líneas de negocio de Vitálica = categorías del informe actual.
+//    (Con EJE_PRINCIPAL = "CATEGORIA" el panel trabaja con estas.)
+const LISTA_MARCAS = [
+  "Proteínas", "Creatinas", "Pre Entrenos", "Vitaminas y Minerales",
+  "Ácidos Grasos", "Bebidas Isotónicas", "Salud Articular", "Descuentos Comerciales"
+];
 
-// 🏷️ Segunda categoría de producto (en Camping era "Armas y Municiones").
-//    En Vitálica puede ser otra línea (ej. equipos, insumos...) o quedar vacía.
+// 🏷️ Segunda línea de negocio (en Camping eran Armas y Municiones).
+//    Vitálica no la usa por ahora.
 const LISTA_ARMAS = [];
 
-// 🏷️ Alias: si en Odoo la marca/descripción contiene la clave, se guarda
-//    con el nombre del valor.  Ej: { "LAB VIT": "Vitálica Lab" }
-const MARCA_ALIAS = {};
+// 🏷️ Alias: si la categoría/marca/descripción contiene la clave, se guarda
+//    con el nombre del valor. Sirve para unificar nombres de Odoo.
+const MARCA_ALIAS = { "DESCUENTOS COMERCIALES": "Descuentos Comerciales" };
 
-// 🏷️ Si la CATEGORÍA de Odoo contiene la clave, la marca pasa a ser el valor.
-//    Ej: { "MUNICION": "Municiones" }
+// 🏷️ Si la CATEGORÍA de Odoo contiene la clave, el eje pasa a ser el valor.
 const CATEGORIA_A_MARCA = {};
 
-// 💸 Palabras que marcan una línea como descuento/anticipo (resta venta).
-const PALABRAS_DESCUENTO = ["DESC", "ANTICIPO"];
+// 💸 Palabras que marcan una línea como descuento (resta venta).
+const PALABRAS_DESCUENTO = ["DESCUENTO"];
 
 /** MAYÚSCULAS sin tildes, para comparar sin sorpresas. */
 function normTxt_(s) {
@@ -138,6 +157,20 @@ function CALCULAR_HABILES(inicio, fin, feriados) {
 
 function obtenerMarcaReal(categoriaOdoo, marcaOdoo, descripcionOdoo, productoNombre) {
   var cat = normTxt_(categoriaOdoo), mar = normTxt_(marcaOdoo), desc = normTxt_(descripcionOdoo), prod = normTxt_(productoNombre);
+
+  // 0) Eje por CATEGORÍA (Vitálica): se usa el último tramo de la categoría de Odoo.
+  //    "ALL / Suplementos (Padre) / Proteínas"  ➜  "Proteínas"
+  if (EJE_PRINCIPAL === "CATEGORIA") {
+    var partes = (categoriaOdoo || "").toString().split("/");
+    var hoja = partes[partes.length - 1].trim();
+    if (hoja) {
+      for (var aliasK in MARCA_ALIAS) { if (normTxt_(hoja).indexOf(normTxt_(aliasK)) >= 0) return MARCA_ALIAS[aliasK]; }
+      // Si la categoría coincide con una de las configuradas, se usa ese nombre prolijo.
+      for (var iL = 0; iL < LISTA_MARCAS.length; iL++) { if (normTxt_(LISTA_MARCAS[iL]) === normTxt_(hoja)) return LISTA_MARCAS[iL]; }
+      return hoja;
+    }
+    return "Sin Categoría";
+  }
 
   // 1) Descuentos / anticipos
   if (contieneAlguna_(prod, PALABRAS_DESCUENTO) || contieneAlguna_(desc, PALABRAS_DESCUENTO)) return "Descuentos";
@@ -200,9 +233,9 @@ function sincronizarMarcasConfig() {
   let requiredCols = 11 + (vendedores.length * 3); if (configSheet.getMaxColumns() < requiredCols) configSheet.insertColumnsAfter(configSheet.getMaxColumns(), requiredCols - configSheet.getMaxColumns());
   let requiredRows = 10 + LISTA_MARCAS.length + LISTA_ARMAS.length; if (configSheet.getMaxRows() < requiredRows) configSheet.insertRowsAfter(configSheet.getMaxRows(), requiredRows - configSheet.getMaxRows());
   if (configSheet.getMaxColumns() > 11) configSheet.getRange(1, 12, configSheet.getMaxRows(), configSheet.getMaxColumns() - 11).clearContent().clearFormat();
-  configSheet.getRange(2, 12).setValue("METAS INDIVIDUALES POR VENDEDOR Y MARCA").setFontWeight("bold").setFontColor("#2C7A7B");
+  configSheet.getRange(2, 12).setValue("METAS INDIVIDUALES POR VENDEDOR Y CATEGORÍA").setFontWeight("bold").setFontColor("#2C7A7B");
   let colAct = 12;
-  vendedores.forEach(v => { configSheet.getRange(3, colAct, 1, 2).merge().setValue(v).setFontWeight("bold").setBackground("#1C3D5A").setFontColor("#FFFFFF").setHorizontalAlignment("center"); configSheet.getRange(4, colAct).setValue("Marca").setFontWeight("bold").setBackground("#E2E8F0"); configSheet.getRange(4, colAct+1).setValue("Monto Objetivo").setFontWeight("bold").setBackground("#E2E8F0"); var rows = [["--- MARCAS ---", ""]]; LISTA_MARCAS.forEach(b => rows.push([b, existingGoals[v + "|||" + b] || 0])); rows.push(["--- ARMAS Y MUNICIONES ---", ""]); LISTA_ARMAS.forEach(b => rows.push([b, existingGoals[v + "|||" + b] || 0])); configSheet.getRange(5, colAct, rows.length, 2).setValues(rows); configSheet.getRange(5, colAct+1, rows.length, 1).setNumberFormat("₲ #,##0"); configSheet.setColumnWidth(colAct, 250); configSheet.setColumnWidth(colAct+1, 120); configSheet.setColumnWidth(colAct+2, 30); colAct += 3; });
+  vendedores.forEach(v => { configSheet.getRange(3, colAct, 1, 2).merge().setValue(v).setFontWeight("bold").setBackground("#1C3D5A").setFontColor("#FFFFFF").setHorizontalAlignment("center"); configSheet.getRange(4, colAct).setValue("Categoría").setFontWeight("bold").setBackground("#E2E8F0"); configSheet.getRange(4, colAct+1).setValue("Monto Objetivo").setFontWeight("bold").setBackground("#E2E8F0"); var rows = [["--- CATEGORÍAS ---", ""]]; LISTA_MARCAS.forEach(b => rows.push([b, existingGoals[v + "|||" + b] || 0])); if (LISTA_ARMAS.length) rows.push(["--- SEGUNDA LÍNEA ---", ""]); LISTA_ARMAS.forEach(b => rows.push([b, existingGoals[v + "|||" + b] || 0])); configSheet.getRange(5, colAct, rows.length, 2).setValues(rows); configSheet.getRange(5, colAct+1, rows.length, 1).setNumberFormat("₲ #,##0"); configSheet.setColumnWidth(colAct, 250); configSheet.setColumnWidth(colAct+1, 120); configSheet.setColumnWidth(colAct+2, 30); colAct += 3; });
   SpreadsheetApp.flush(); SpreadsheetApp.getUi().alert(`✅ ¡Catálogo Sincronizado!`);
 }
 
@@ -280,6 +313,8 @@ function actualizarDatosOdoo() {
       if (contieneAlguna_(vNorm, VENDEDORES_EXCLUIDOS)) descartar = true;
       if (contieneAlguna_(pNorm, PRODUCTOS_EXCLUIDOS) || contieneAlguna_(descNorm, PRODUCTOS_EXCLUIDOS)) descartar = true;
       if (contieneAlguna_(cNormCliente, CLIENTES_EXCLUIDOS)) descartar = true;
+      // Categorías fuera del informe (Merchandising / Muestrario en el Looker actual).
+      if (contieneAlguna_(normTxt_(categoriaOriginal), CATEGORIAS_EXCLUIDAS)) descartar = true;
       // Equipo excluido (ej. "No Pagar Comision"): no se descarta si es E-commerce.
       if (contieneAlguna_(tNorm, EQUIPOS_EXCLUIDOS) && !esEcommerce) descartar = true;
       // Equipo excluido y ademas sin vendedor real: nunca suma.
@@ -303,10 +338,11 @@ function actualizarDatosOdoo() {
         }
       }
 
-      // Las facturas sin vendedor real son internas y NO suman.
-      if (vNorm === "" || vNorm.indexOf("SIN VENDEDOR") >= 0) return;
+      // Facturas sin vendedor asignado: se descartan solo si está configurado así.
+      var sinVendedor = (vNorm === "" || vNorm.indexOf("SIN VENDEDOR") >= 0 || vNorm === "NULL" || vNorm === "FALSE");
+      if (sinVendedor && EXCLUIR_FACTURAS_SIN_VENDEDOR) return;
 
-      var vendedorEtiquetado = vendedor.trim() + " - " + canalFinal;
+      var vendedorEtiquetado = (sinVendedor ? "Sin Vendedor" : vendedor.trim()) + " - " + canalFinal;
 
       var total = Number(line.price_total || 0), subtotal = Number(line.price_subtotal || 0), precioUnit = Number(line.price_unit || 0), cantidad = Number(line.quantity || 0), moneda = line.currency_id ? line.currency_id[1] : "PYG", tipoCambio = 1;
       if (moneda.toUpperCase().includes("USD")) { var montoUSD = Math.abs(Number(line.amount_currency || 0)), montoPYG = Math.abs(Number(line.balance || 0)); if (montoUSD > 0) tipoCambio = montoPYG / montoUSD; precioUnit = precioUnit * tipoCambio; total = total * tipoCambio; subtotal = subtotal * tipoCambio; }
@@ -334,8 +370,11 @@ function actualizarDatosOdoo() {
       // clientes de CLIENTES_ECOMMERCE cae en el grupo "resto" (si esta configurado).
       var grupoEcom = (esEcommerce && GRUPO_ECOMMERCE_RESTO && !contieneAlguna_(cNormCliente, CLIENTES_ECOMMERCE)) ? GRUPO_ECOMMERCE_RESTO : "";
 
+      // 💰 Importe con el que trabaja todo el panel: sin IVA (subtotal) o con IVA (total).
+      var montoPanel = (MONTO_BASE === "SIN_IVA") ? subtotal : total;
+
       var precioPromedio = cantidad !== 0 ? (subtotal / cantidad) : 0;
-      rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", total, grupoEcom]);
+      rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, grupoEcom]);
     });
   }
 
@@ -674,7 +713,7 @@ function crearEstructuraConfig(sheet) {
 
   sheet.getRange(4, 6, CANALES.length, 2).setValues(CANALES.map(c => [c, 0]));
 
-  sheet.getRange("F11").setValue("METAS POR CATEGORÍA").setFontWeight("bold").setFontColor("#2C7A7B"); sheet.getRange("F12:G12").setValues([["Categoría", "Monto Objetivo"]]).setFontWeight("bold"); sheet.getRange("F13:G14").setValues([["MARCAS", 500000000], ["ARMAS Y MUNICIONES", 1500000000]]);
+  sheet.getRange("F11").setValue("METAS POR LÍNEA").setFontWeight("bold").setFontColor("#2C7A7B"); sheet.getRange("F12:G12").setValues([["Categoría", "Monto Objetivo"]]).setFontWeight("bold"); sheet.getRange("F13:G14").setValues([["SUPLEMENTOS", 0], ["OTROS", 0]]);
   sheet.getRange("I2").setValue("METAS TOTALES POR VENDEDOR").setFontWeight("bold").setFontColor("#2C7A7B"); sheet.getRange("I3:J3").setValues([["Vendedor", "Monto Objetivo Total"]]).setFontWeight("bold"); sheet.getRange("J4:J50").setNumberFormat("₲ #,##0"); sheet.autoResizeColumns(1, 10);
 }
 
@@ -696,7 +735,7 @@ function formatearFechaParaOdoo(v) { if (v instanceof Date) return Utilities.for
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('⚙️ Menú Vitálica')
     .addItem('🔎 0. Descubrir estructura de Vitálica (Odoo)', 'descubrirEstructuraVitalica')
-    .addItem('📥 1. Sincronizar Marcas (CONFIG)', 'sincronizarMarcasConfig')
+    .addItem('📥 1. Sincronizar Categorías (CONFIG)', 'sincronizarMarcasConfig')
     .addItem('🔄 2. Descargar Ventas Odoo', 'actualizarDatosOdoo')
     .addItem('📊 3. Generar Dashboard Comercial', 'dibujarDashboard')
     .addItem('🛒 4. Desglose E-commerce', 'dibujarDashboardEcommerce')
