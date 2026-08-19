@@ -93,21 +93,29 @@ const CLIENTES_EXCLUIDOS = [];
 
 // 🎯 Canales del panel (los del informe actual de Vitálica).
 //    OJO: si se cambian, hay que cambiarlos también en index.html y en la web app.
-const CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones"];
+const CANALES = ["Mayorista", "Distribuidor", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
 const CANAL_POR_DEFECTO = "Consumidor Final";
 
 // 🎯 Cómo se clasifica cada factura: se mira el EQUIPO de ventas de Odoo
 //    (y si no, el nombre del vendedor). Primera coincidencia gana.
-//    Equipos vistos en el informe actual: Mayorista Vitalica · Distribuidor ·
-//    Consumidor final · Consumidor Final Vitalica · Sin Comisiones.
+//    Equipos reales que devolvió el descubrimiento (facturación 2026):
+//      Mayorista Vitalica · Distribuidor · Muestrario - Gimnasio · Consumidor final ·
+//      Consumidor Final Vitalica · Sin Comisiones · Sales · E-commerce
+//    OJO con el orden: "Muestrario - Gimnasio" tiene que caer en Gimnasios y
+//    Muestrarios antes de que lo agarre cualquier otra regla.
 const MAPEO_CANALES = [
+  { match: "MUESTRARIO",       canal: "Gimnasios y Muestrarios" },
+  { match: "GIMNASIO",         canal: "Gimnasios y Muestrarios" },
   { match: "MAYORISTA",        canal: "Mayorista" },
   { match: "DISTRIBUIDOR",     canal: "Distribuidor" },
   { match: "DISTRIBUCION",     canal: "Distribuidor" },
   { match: "CONSUMIDOR FINAL", canal: "Consumidor Final" },
-  { match: "GIMNASIO",         canal: "Gimnasios y Muestrarios" },
-  { match: "MUESTRARIO",       canal: "Gimnasios y Muestrarios" },
-  { match: "SIN COMISION",     canal: "Sin Comisiones" }
+  // "Sales" es el equipo por defecto de Odoo. En el informe actual su facturación
+  // entra en la página de Consumidor Final, así que se mapea ahí.
+  { match: "SALES",            canal: "Consumidor Final" },
+  { match: "SIN COMISION",     canal: "Sin Comisiones" },
+  { match: "E-COMMERCE",       canal: "E-commerce" },
+  { match: "ECOMMERCE",        canal: "E-commerce" }
 ];
 
 // 🛒 Clientes de e-commerce con nombre propio (Vitálica hoy no usa este bloque).
@@ -252,6 +260,8 @@ function autoRellenarMetasPrueba() {
 function actualizarDatosOdoo() {
   const ss = SpreadsheetApp.getActiveSpreadsheet(); let sheetData = ss.getSheetByName(HOJA_DESTINO), configSheet = ss.getSheetByName(HOJA_CONFIG);
   if (!sheetData) { sheetData = ss.insertSheet(HOJA_DESTINO); }
+  // Planilla nueva: si todavía no está la hoja CONFIG, se arma sola con el mes en curso.
+  if (!configSheet) { configSheet = ss.insertSheet(HOJA_CONFIG); crearEstructuraConfig(configSheet); SpreadsheetApp.flush(); }
   if (sheetData.getMaxColumns() < 35) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 35 - sheetData.getMaxColumns());
 
   let valFin = configSheet.getRange("B4").getValue();
@@ -405,7 +415,8 @@ function cargarMetasCentralesDesdeConfig(sheet) {
 
 function dibujarDashboard() {
   const ss = SpreadsheetApp.getActiveSpreadsheet(), sheetData = ss.getSheetByName(HOJA_DESTINO); let configSheet = ss.getSheetByName(HOJA_CONFIG);
-  if (!sheetData || sheetData.getLastRow() <= 1) { SpreadsheetApp.getUi().alert(`⚠️ No hay información en DATA.`); return; }
+  if (!sheetData || sheetData.getLastRow() <= 1) { SpreadsheetApp.getUi().alert(`⚠️ No hay información en DATA. Corré primero «🔄 Descargar Ventas Odoo».`); return; }
+  if (!configSheet) { configSheet = ss.insertSheet(HOJA_CONFIG); crearEstructuraConfig(configSheet); SpreadsheetApp.flush(); }
   ss.toast("Calculando y Dibujando...", "⏳ Espere", 5);
   let metasConfig = cargarMetasCentralesDesdeConfig(configSheet), rowsOut = sheetData.getRange(2, 1, sheetData.getLastRow() - 1, 31).getValues();
   let diasHabilesMes = metasConfig.diasMes, diasHabilesTranscurridos = metasConfig.diasTranscurridos;
@@ -706,7 +717,11 @@ function dibujarDashboard() {
 }
 
 function crearEstructuraConfig(sheet) {
-  sheet.clear(); sheet.getRange("A1").setValue("⚙️ PANEL CENTRAL").setFontWeight("bold"); sheet.getRange("A3").setValue("Fecha Inicio:"); sheet.getRange("B3").setValue("01/06/2026"); sheet.getRange("A4").setValue("Fecha Fin:"); sheet.getRange("B4").setValue("30/06/2026"); sheet.getRange("A5").setValue("Fecha Actual (Corte):").setFontWeight("bold").setFontColor("#2C7A7B"); sheet.getRange("B5").setValue(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy"));
+  sheet.clear(); sheet.getRange("A1").setValue("⚙️ PANEL CENTRAL").setFontWeight("bold"); sheet.getRange("A3").setValue("Fecha Inicio:"); sheet.getRange("A4").setValue("Fecha Fin:");
+  var _hoy = new Date(), _tz = Session.getScriptTimeZone();
+  var _ini = new Date(_hoy.getFullYear(), _hoy.getMonth(), 1), _fin = new Date(_hoy.getFullYear(), _hoy.getMonth() + 1, 0);
+  sheet.getRange("B3").setValue(Utilities.formatDate(_ini, _tz, "dd/MM/yyyy"));
+  sheet.getRange("B4").setValue(Utilities.formatDate(_fin, _tz, "dd/MM/yyyy")); sheet.getRange("A5").setValue("Fecha Actual (Corte):").setFontWeight("bold").setFontColor("#2C7A7B"); sheet.getRange("B5").setValue(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy"));
   sheet.getRange("C2").setValue("🏖️ FERIADOS DEL MES").setFontWeight("bold").setFontColor("#C53030"); sheet.getRange("C3:C12").setBackground("#FFF5F5").setBorder(true, true, true, true, false, false, "#FEB2B2", SpreadsheetApp.BorderStyle.SOLID);
   sheet.getRange("A6").setValue("Días Hábiles del Mes:").setFontWeight("bold").setFontColor("#2C7A7B"); sheet.getRange("B6").setValue("=CALCULAR_HABILES(B3; B4; C3:C12)").setNumberFormat("0.0"); sheet.getRange("A7").setValue("Días Hábiles Transcurridos:").setFontWeight("bold").setFontColor("#2C7A7B"); sheet.getRange("B7").setValue("=CALCULAR_HABILES(B3; B5; C3:C12)").setNumberFormat("0.0");
   sheet.getRange("D2").setValue("META GLOBAL DE LA COMPAÑÍA").setFontWeight("bold"); sheet.getRange("D4").setValue(0).setNumberFormat("₲ #,##0"); sheet.getRange("F2").setValue("METAS POR CANAL").setFontWeight("bold"); sheet.getRange("F3:G3").setValues([["Canal", "Monto"]]).setFontWeight("bold");
@@ -837,7 +852,7 @@ function descubrirEstructuraVitalica() {
     ["move_id.company_id", "=", EMPRESA_ID],
     ["date", ">=", anio + "-01-01"],
     ["date", "<=", anio + "-12-31"]
-  ]], { fields: ["date", "price_total", "product_id", "partner_id", "move_id"], limit: 80000 }) || [];
+  ]], { fields: ["date", "price_total", "price_subtotal", "product_id", "partner_id", "move_id"], limit: 80000 }) || [];
 
   if (!lines.length) { ui.alert("\u26a0\ufe0f No se encontraron facturas de " + EMPRESA_NOMBRE + " (empresa " + EMPRESA_ID + ") en " + anio + "."); return; }
 
@@ -851,7 +866,8 @@ function descubrirEstructuraVitalica() {
   var equipos = {}, vendedores = {}, marcas = {}, categorias = {}, clientes = {}, vendPorEquipo = {};
   lines.forEach(l => {
     var m = moveMap[l.move_id[0]]; if (!m) return;
-    var total = Number(l.price_total || 0);
+    // Importes sin IVA, igual que el panel (MONTO_BASE).
+    var total = Number((MONTO_BASE === "SIN_IVA" ? l.price_subtotal : l.price_total) || 0);
     var equipo = m.team_id ? m.team_id[1] : "(sin equipo)";
     var vend = m.invoice_user_id ? m.invoice_user_id[1] : "(sin vendedor)";
     var prod = l.product_id ? productMap[l.product_id[0]] : null;
@@ -876,7 +892,7 @@ function descubrirEstructuraVitalica() {
   out.push(["\ud83d\udd0e ESTRUCTURA REAL DE " + EMPRESA_NOMBRE + " EN ODOO (a\u00f1o " + anio + ")", "", ""]);
   out.push(["Facturas leídas: " + lines.length + " líneas", "", ""]);
   out.push(["", "", ""]);
-  out.push(["EMPRESAS EN LA INSTANCIA", "ID", "Facturación " + anio]);
+  out.push(["EMPRESAS EN LA INSTANCIA", "ID", "Facturación " + anio + (MONTO_BASE === "SIN_IVA" ? " (sin IVA)" : " (con IVA)")]);
   empresas.forEach(e => out.push([e.name, e.id, e.id === EMPRESA_ID ? "\u2705 esta es la que se trae" : ""]));
 
   function bloque(titulo, obj, nota) {
