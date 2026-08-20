@@ -334,6 +334,21 @@ const gs = n => "₲ " + Math.round(n || 0).toLocaleString("es-PY");
 const num = n => Math.round(n || 0).toLocaleString("es-PY");
 const pct = (a, b) => b > 0 ? (a / b * 100) : 0;
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+// Coincidencia por PALABRA COMPLETA, no por pedacito. "GTC" no puede matchear
+// dentro de otra palabra, y así se evita arrastrar clientes por casualidad.
+function contienePalabra(txt, palabra) {
+  const t = norm(txt), p = norm(palabra);
+  if (!p) return false;
+  let i = t.indexOf(p);
+  while (i >= 0) {
+    const antes = i === 0 ? "" : t[i - 1];
+    const despues = t[i + p.length] || "";
+    const esLetra = c => /[A-ZÁÉÍÓÚÑ0-9]/.test(c);
+    if (!esLetra(antes) && !esLetra(despues)) return true;
+    i = t.indexOf(p, i + 1);
+  }
+  return false;
+}
 function contieneAlguna(txt, lista) { const t = norm(txt); return (lista || []).some(x => x && t.includes(norm(x))); }
 
 function parseCSV(texto) {
@@ -516,11 +531,15 @@ function agruparClientes(filas) {
     if (r.ruc) unir(claveNombre, "r:" + r.ruc);
     // El RUC de la dirección de entrega también une: en Lichton una sucursal
     // tiene el RUC mal cargado (8008905-4 en vez de 80089050-7).
-    if (r.rucEntrega) unir(claveNombre, "r:" + r.rucEntrega);
+    if (r.rucEntrega && r.entregaPropia) unir(claveNombre, "r:" + r.rucEntrega);
     // Y el alias por nombre, para los que ni por RUC se juntan.
-    const donde = norm(r.clienteCompleto) + " " + norm(r.sucursal) + " " + norm(r.baseEntrega);
+    // OJO: se mira solo el nombre de la ENTIDAD (lo que va antes de la coma),
+    // nunca la sucursal ni la dirección. Si no, un cliente particular que se
+    // hace entregar en un gimnasio ("VICTOR PAULO CAME CARVALLO, GTC CAMPO
+    // GRANDE") se iría al grupo del gimnasio.
+    const donde = r.clienteBase + " ~ " + (r.entregaPropia ? r.baseEntrega : "");
     for (let i = 0; i < ALIAS_CLIENTE.length; i++) {
-      if (donde.includes(norm(ALIAS_CLIENTE[i].match))) {
+      if (contienePalabra(donde, ALIAS_CLIENTE[i].match)) {
         r.alias = ALIAS_CLIENTE[i].cliente;
         unir(claveNombre, "n:" + norm(r.alias));
         break;
@@ -539,7 +558,7 @@ function agruparClientes(filas) {
     r.grupoCliente = g;
     if (!puntos[g]) puntos[g] = {};
     if (r.clienteBase && r.clienteBase !== "Sin Cliente") puntos[g][r.clienteBase] = (puntos[g][r.clienteBase] || 0) + 1;
-    if (r.baseEntrega) puntos[g][r.baseEntrega] = (puntos[g][r.baseEntrega] || 0) + 2;
+    if (r.baseEntrega && r.entregaPropia) puntos[g][r.baseEntrega] = (puntos[g][r.baseEntrega] || 0) + 2;
     if (r.alias) puntos[g][r.alias] = (puntos[g][r.alias] || 0) + 5;
   });
   const nombre = {};
@@ -563,9 +582,9 @@ function agruparClientes(filas) {
   filas.forEach(r => {
     const g = r.grupoCliente;
     if (canalGrupo[g]) return;
-    const donde = norm(r.clienteCompleto) + " " + norm(r.sucursal) + " " + norm(r.baseEntrega) + " " + norm(nombre[g] || "");
+    const donde = r.clienteBase + " ~ " + (r.entregaPropia ? r.baseEntrega : "") + " ~ " + (nombre[g] || "");
     for (let i = 0; i < CANAL_POR_CLIENTE.length; i++) {
-      if (donde.includes(norm(CANAL_POR_CLIENTE[i].match))) { canalGrupo[g] = CANAL_POR_CLIENTE[i].canal; break; }
+      if (contienePalabra(donde, CANAL_POR_CLIENTE[i].match)) { canalGrupo[g] = CANAL_POR_CLIENTE[i].canal; break; }
     }
   });
 
@@ -614,6 +633,14 @@ function normalizarData(filas) {
       ruc: cli.ruc,
       rucEntrega: env.ruc,
       baseEntrega: env.base !== "Sin Cliente" ? env.base : "",
+      // ¿La dirección de entrega es del MISMO cliente, o es la de un tercero?
+      // Hay consumidores finales a los que se les entrega en un gimnasio
+      // ("ANA GONZÁLEZ" entregado en "GARAGE CROSS ... , GTC-LOMA"): en ese
+      // caso la dirección no dice nada sobre quién es el cliente.
+      entregaPropia: (function () {
+        const a = norm(cli.base), b = norm(env.base);
+        return !!(b && b !== "SIN CLIENTE" && (a.indexOf(b) === 0 || b.indexOf(a) === 0));
+      })(),
       grupoCliente: "",            // lo asigna agruparClientes()
       categoria: String(r[15] || "").trim() || "Sin Categoría",
       vendedor: vend,

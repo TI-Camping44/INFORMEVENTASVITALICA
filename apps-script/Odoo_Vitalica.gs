@@ -196,6 +196,42 @@ const PALABRAS_DESCUENTO = ["DESCUENTO"];
 function normTxt_(s) {
   return (s === null || s === undefined ? "" : String(s)).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
+/**
+ * Nombre de la ENTIDAD: lo que va antes de la primera coma, sin el RUC del final.
+ * "VICTOR PAULO CAME CARVALLO, GTC CAMPO GRANDE - 2411201-1" ➜ "VICTOR PAULO CAME CARVALLO"
+ * Sirve para no confundir al cliente con el lugar donde se le entrega.
+ */
+function nombreEntidad_(nombre) {
+  var t = String(nombre || "").replace(/-\s*\d{4,}(-[\dkK])?\s*$/, "").trim();
+  var coma = t.indexOf(",");
+  return (coma > 0 ? t.slice(0, coma) : t).trim();
+}
+
+/**
+ * Nombre del cliente, y el de la dirección de entrega SOLO si es del mismo
+ * cliente. Si a un consumidor final se le entrega en un gimnasio, la dirección
+ * no dice nada sobre quién es el cliente y no tiene que arrastrarlo de canal.
+ */
+function entidadYEntrega_(cliente, entrega) {
+  var a = nombreEntidad_(cliente), b = nombreEntidad_(entrega);
+  var na = normTxt_(a), nb = normTxt_(b);
+  var propia = nb && (na.indexOf(nb) === 0 || nb.indexOf(na) === 0);
+  return a + " ~ " + (propia ? b : "");
+}
+
+/** Coincidencia por PALABRA COMPLETA: "GTC" no matchea dentro de otra palabra. */
+function contienePalabra_(txt, palabra) {
+  var t = normTxt_(txt), p = normTxt_(palabra);
+  if (!p) return false;
+  var esLetra = function (c) { return /[A-ZÁÉÍÓÚÑ0-9]/.test(c || ""); };
+  var i = t.indexOf(p);
+  while (i >= 0) {
+    if (!esLetra(i === 0 ? "" : t[i - 1]) && !esLetra(t[i + p.length])) return true;
+    i = t.indexOf(p, i + 1);
+  }
+  return false;
+}
+
 /** ¿el texto contiene alguna de las palabras de la lista? */
 function contieneAlguna_(txt, lista) {
   if (!lista || !lista.length) return false;
@@ -412,10 +448,13 @@ function actualizarDatosOdoo_(silencioso) {
         }
       }
 
-      // El cliente manda sobre el equipo de venta.
+      // El cliente manda sobre el equipo de venta. Se mira SOLO el nombre de la
+      // entidad, nunca la sucursal: hay clientes de consumidor final a los que
+      // se les entrega en un gimnasio ("VICTOR PAULO CAME CARVALLO, GTC CAMPO
+      // GRANDE") y no por eso son el gimnasio.
+      var entidad = entidadYEntrega_(cliente, entrega);
       for (var iCC = 0; iCC < CANAL_POR_CLIENTE.length; iCC++) {
-        var claveCli = normTxt_(CANAL_POR_CLIENTE[iCC].match);
-        if (claveCli && (cNormCliente.indexOf(claveCli) >= 0 || normTxt_(entrega).indexOf(claveCli) >= 0)) {
+        if (contienePalabra_(entidad, CANAL_POR_CLIENTE[iCC].match)) {
           canalFinal = CANAL_POR_CLIENTE[iCC].canal; break;
         }
       }
@@ -552,9 +591,9 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
       var clave = normTxt_(MAPEO_CANALES[i].match);
       if (clave && (tNorm.indexOf(clave) >= 0 || vNorm.indexOf(clave) >= 0)) { canalFinal = MAPEO_CANALES[i].canal; break; }
     }
+    var entidad = entidadYEntrega_(cliente, entrega);
     for (var iCC = 0; iCC < CANAL_POR_CLIENTE.length; iCC++) {
-      var claveCli = normTxt_(CANAL_POR_CLIENTE[iCC].match);
-      if (claveCli && (cNormCliente.indexOf(claveCli) >= 0 || normTxt_(entrega).indexOf(claveCli) >= 0)) {
+      if (contienePalabra_(entidad, CANAL_POR_CLIENTE[iCC].match)) {
         canalFinal = CANAL_POR_CLIENTE[iCC].canal; break;
       }
     }
