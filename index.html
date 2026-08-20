@@ -191,8 +191,8 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
     <div class="f-group"><label>Cliente</label><input type="text" id="f-cliente" placeholder="buscar cliente..." oninput="aplicar()"></div>
     <div class="f-group"><label>Documento</label><select id="f-doc" onchange="aplicar()">
       <option value="factura" selected>Solo facturas</option>
-      <option value="">Facturas + muestrarios</option>
-      <option value="remision">Solo muestrarios (remisiones)</option>
+      <option value="">Facturas + entregas sin facturar</option>
+      <option value="remision">Solo entregas sin facturar</option>
     </select></div>
     <div class="f-group"><label>Desde</label><input type="date" id="f-desde" onchange="aplicar()"></div>
     <div class="f-group"><label>Hasta</label><input type="date" id="f-hasta" onchange="aplicar()"></div>
@@ -211,8 +211,9 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   <div id="vista-datos">
     <div class="kpi-row" id="kpis"></div>
     <div class="note">Observación: importes sin IVA. Por defecto se muestran <b>solo facturas</b>.
-      Los <b>muestrarios</b> (órdenes entregadas sin facturar) se cuentan aparte y se pueden sumar
-      con el filtro «Documento».
+      Lo <b>entregado sin facturar</b> (órdenes de venta confirmadas y entregadas que todavía no
+      tienen factura: muestrarios y entregas pendientes de facturar) se cuenta aparte y se puede
+      sumar con el filtro «Documento».
       «Clientes activos» = clientes que compraron en los últimos <b id="nmeses-activo">3</b> meses.</div>
 
     <div class="grid-charts">
@@ -919,8 +920,8 @@ function renderKPIs(k, kRem) {
   document.getElementById("kpis").innerHTML =
     kpi(soloFacturas ? "Monto Facturado s/IVA" : "Monto s/IVA", gs(k.monto),
       num(k.unidades) + " unidades" + (!soloFacturas && k.montoRemision ? " · incl. " + gs(k.montoRemision) + " en muestrarios" : "")) +
-    kpi("Muestrarios", gs(kRem ? kRem.monto : 0),
-      soloFacturas ? "remisiones · NO suman al monto" : "remisiones · incluidas en el monto") +
+    kpi("Entregado sin facturar", gs(kRem ? kRem.monto : 0),
+      soloFacturas ? "órdenes entregadas · NO suman al monto" : "órdenes entregadas · incluidas en el monto") +
     kpi("Cant. Facturas", num(k.facturas), num(k.lineas) + " líneas") +
     kpi("Promedio de Tickets", gs(k.ticket), "promedio por línea (AVG)") +
     kpi("Clientes Activos", num(k.activos), "de " + num(k.clientes) + " · desde " + k.corte.toLocaleDateString("es-PY")) +
