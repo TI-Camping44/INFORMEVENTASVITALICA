@@ -278,6 +278,20 @@ const UNIFICAR_CANALES = { "Distribuidor": "Mayorista" };
 // Canal forzado por CLIENTE, cuando el equipo de venta de Odoo no lo refleja
 // (gimnasios y distribuidoras cargados como "Consumidor final"). Tiene que ser
 // la misma lista que la del Apps Script.
+// Clientes que en Odoo están cargados con varios nombres y RUC distintos.
+// La agrupación por RUC no alcanza: hay sucursales con otro RUC o con un
+// número que no es RUC (ej. "GTC-Campo Grande ... - 110938"). Lo que coincida
+// acá se une bajo el nombre indicado.
+const ALIAS_CLIENTE = [
+  { match: "GTC",    cliente: "GARAGE CROSS SOCIEDAD ANONIMA" },
+  { match: "GARAGE", cliente: "GARAGE CROSS SOCIEDAD ANONIMA" },
+  { match: "BIGG",   cliente: "BAMBÚ GROUP SOCIEDAD ANONIMA" },
+  { match: "BAMBU",  cliente: "BAMBÚ GROUP SOCIEDAD ANONIMA" },
+  { match: "BAMBÚ",  cliente: "BAMBÚ GROUP SOCIEDAD ANONIMA" },
+  { match: "FITWAY", cliente: "LICHTON S.A." },
+  { match: "VIGOR",  cliente: "VIGOR SA" }
+];
+
 const CANAL_POR_CLIENTE = [
   { match: "BAMBU",    canal: "Gimnasios y Muestrarios" },
   { match: "BAMBÚ",    canal: "Gimnasios y Muestrarios" },
@@ -468,7 +482,9 @@ function fallo(html) {
 // alternar entre la vista agrupada y la vista por sucursal.
 function partirCliente(nombre) {
   const txt = String(nombre || "").trim() || "Sin Cliente";
-  const m = txt.match(/-\s*(\d{4,}-[\dkK])\s*$/);
+  // RUC al final: "80108473-3", y también números sueltos como "110938" o la
+  // cédula de un contacto ("5039341"), que Odoo deja pegados al nombre.
+  const m = txt.match(/-\s*(\d{4,}(?:-[\dkK])?)\s*$/);
   const ruc = m ? m[1] : "";
   const sinRuc = (m ? txt.slice(0, m.index) : txt).replace(/[,\-\s]+$/, "").trim();
   const coma = sinRuc.indexOf(",");
@@ -501,6 +517,15 @@ function agruparClientes(filas) {
     // El RUC de la dirección de entrega también une: en Lichton una sucursal
     // tiene el RUC mal cargado (8008905-4 en vez de 80089050-7).
     if (r.rucEntrega) unir(claveNombre, "r:" + r.rucEntrega);
+    // Y el alias por nombre, para los que ni por RUC se juntan.
+    const donde = norm(r.clienteCompleto) + " " + norm(r.sucursal) + " " + norm(r.baseEntrega);
+    for (let i = 0; i < ALIAS_CLIENTE.length; i++) {
+      if (donde.includes(norm(ALIAS_CLIENTE[i].match))) {
+        r.alias = ALIAS_CLIENTE[i].cliente;
+        unir(claveNombre, "n:" + norm(r.alias));
+        break;
+      }
+    }
   });
 
   // Nombre del grupo: se puntúan los candidatos por cuántas filas los usan, y la
@@ -515,6 +540,7 @@ function agruparClientes(filas) {
     if (!puntos[g]) puntos[g] = {};
     if (r.clienteBase && r.clienteBase !== "Sin Cliente") puntos[g][r.clienteBase] = (puntos[g][r.clienteBase] || 0) + 1;
     if (r.baseEntrega) puntos[g][r.baseEntrega] = (puntos[g][r.baseEntrega] || 0) + 2;
+    if (r.alias) puntos[g][r.alias] = (puntos[g][r.alias] || 0) + 5;
   });
   const nombre = {};
   Object.keys(puntos).forEach(g => {
@@ -545,6 +571,9 @@ function agruparClientes(filas) {
 
   filas.forEach(r => {
     r.cliente = nombre[r.grupoCliente] || r.clienteBase;
+    // Si el contacto no arranca con el nombre del grupo, es una sucursal con
+    // nombre propio (ej. "GTC-Campo Grande ..."): se muestra como sucursal.
+    if (!r.sucursal && norm(r.clienteBase).indexOf(norm(r.cliente)) !== 0) r.sucursal = r.clienteBase;
     r.clienteSucursal = r.sucursal ? r.cliente + " · " + r.sucursal : r.cliente;
     if (canalGrupo[r.grupoCliente]) r.canal = canalGrupo[r.grupoCliente];
   });
