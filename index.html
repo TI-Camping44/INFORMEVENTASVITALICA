@@ -1019,7 +1019,13 @@ function renderDatos(datos) {
   // Ventas por mes (en orden cronológico)
   const meses = {};
   datos.forEach(r => { if (r.esNC) return; meses[r.mes] = (meses[r.mes] || 0) + r.monto; });
-  const filasMes = Object.keys(meses).map(Number).sort((a, b) => a - b).map(m => ({ mes: m, clave: MESES[m], monto: meses[m] }));
+  // Se completan los meses sin ventas con 0: si no, la lista saltea meses
+  // (falta Junio, por ejemplo) y parece que estuviera desordenada.
+  const conVenta = Object.keys(meses).map(Number);
+  const desdeM = conVenta.length ? Math.min(...conVenta) : 1;
+  const hastaM = conVenta.length ? Math.max(...conVenta) : 0;
+  const filasMes = [];
+  for (let m = desdeM; m <= hastaM; m++) filasMes.push({ mes: m, clave: MESES[m], monto: meses[m] || 0 });
   const totalMes = filasMes.reduce((s, f) => s + f.monto, 0);
   const maxMes = Math.max(...filasMes.map(f => f.monto), 1);
   document.getElementById("t-meses").innerHTML = filasMes.length
@@ -1054,7 +1060,20 @@ function evolucion(datos) {
     const k = porDia ? r.ymd : String(r.anio) + "-" + String(r.mes).padStart(2, "0");
     acc[k] = (acc[k] || 0) + r.monto;
   });
-  const claves = Object.keys(acc).sort();
+  let claves = Object.keys(acc).sort();
+  // Mismo criterio que la tabla: los períodos sin ventas se dibujan en 0, para
+  // que la línea no "salte" un mes y se note el bajón.
+  if (!porDia && claves.length > 1) {
+    const anioBase = claves[0].slice(0, 4);
+    const desde = +claves[0].slice(5), hasta = +claves[claves.length - 1].slice(5);
+    const todas = [];
+    for (let m = desde; m <= hasta; m++) {
+      const k = anioBase + "-" + String(m).padStart(2, "0");
+      if (!(k in acc)) acc[k] = 0;
+      todas.push(k);
+    }
+    claves = todas;
+  }
   const etiquetas = claves.map(k => porDia ? k.slice(8) + "/" + k.slice(5, 7) : MESES[+k.slice(5)]);
   const valores = claves.map(k => acc[k]);
   const sub = document.getElementById("sub-evolucion");
