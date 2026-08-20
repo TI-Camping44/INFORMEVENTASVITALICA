@@ -242,6 +242,9 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
       <div class="card"><h3>Canales de Venta</h3>
         <table id="t-canales"></table></div>
     </div>
+
+    <div class="card"><h3>Detalle de Documentos <small id="sub-docs"></small></h3>
+      <div class="tbl-scroll" style="max-height:520px"><table id="t-docs"></table></div></div>
   </div>
 
   <div id="vista-objetivos" class="hide"></div>
@@ -500,20 +503,50 @@ function agruparClientes(filas) {
     if (r.rucEntrega) unir(claveNombre, "r:" + r.rucEntrega);
   });
 
-  const nombre = {};
+  // Nombre del grupo: se puntúan los candidatos por cuántas filas los usan, y la
+  // dirección de entrega pesa doble porque casi siempre trae el nombre de la
+  // casa matriz ("GARAGE CROSS SOCIEDAD ANONIMA , GTC-LAMBARE"). No sirve quedarse
+  // con el más corto: hay contactos que son solo la sucursal ("GTC- FERNANDO
+  // ZONA SUR") y ganarían por ser cortos.
+  const puntos = {};
   filas.forEach(r => {
     const g = raiz("n:" + norm(r.clienteBase));
     r.grupoCliente = g;
-    // Como nombre del grupo se toma el más corto: la factura suele traer el
-    // nombre largo ("... - GARAGE CROSS S.A. :80108473-3") y la dirección de
-    // entrega el limpio ("GARAGE CROSS SOCIEDAD ANONIMA").
-    [r.clienteBase, r.baseEntrega].forEach(cand => {
-      if (cand && cand !== "Sin Cliente" && (!nombre[g] || cand.length < nombre[g].length)) nombre[g] = cand;
-    });
+    if (!puntos[g]) puntos[g] = {};
+    if (r.clienteBase && r.clienteBase !== "Sin Cliente") puntos[g][r.clienteBase] = (puntos[g][r.clienteBase] || 0) + 1;
+    if (r.baseEntrega) puntos[g][r.baseEntrega] = (puntos[g][r.baseEntrega] || 0) + 2;
   });
+  const nombre = {};
+  Object.keys(puntos).forEach(g => {
+    const cands = Object.keys(puntos[g]);
+    if (!cands.length) return;
+    let elegido = cands.sort((a, b) => puntos[g][b] - puntos[g][a] || a.length - b.length)[0];
+    // Si otro candidato es el arranque del elegido, se prefiere ese (más limpio):
+    // "GARAGE CROSS SOCIEDAD ANONIMA" antes que "... - GARAGE CROSS S.A. :80108473-3".
+    cands.forEach(c => {
+      if (c !== elegido && c.length < elegido.length && norm(elegido).indexOf(norm(c)) === 0) elegido = c;
+    });
+    nombre[g] = elegido;
+  });
+
+  // El canal forzado por cliente se decide POR GRUPO, mirando todos los nombres
+  // que aparecen en él. Hace falta porque hay contactos que no repiten el nombre
+  // de la casa matriz (ej. "GTC- FERNANDO ZONA SUR - 80108473-3" no dice
+  // "GARAGE"): recién agrupando por RUC se sabe que son de Garage Cross.
+  const canalGrupo = {};
+  filas.forEach(r => {
+    const g = r.grupoCliente;
+    if (canalGrupo[g]) return;
+    const donde = norm(r.clienteCompleto) + " " + norm(r.sucursal) + " " + norm(r.baseEntrega) + " " + norm(nombre[g] || "");
+    for (let i = 0; i < CANAL_POR_CLIENTE.length; i++) {
+      if (donde.includes(norm(CANAL_POR_CLIENTE[i].match))) { canalGrupo[g] = CANAL_POR_CLIENTE[i].canal; break; }
+    }
+  });
+
   filas.forEach(r => {
     r.cliente = nombre[r.grupoCliente] || r.clienteBase;
     r.clienteSucursal = r.sucursal ? r.cliente + " · " + r.sucursal : r.cliente;
+    if (canalGrupo[r.grupoCliente]) r.canal = canalGrupo[r.grupoCliente];
   });
   return filas;
 }
@@ -556,10 +589,6 @@ function normalizarData(filas) {
       categoria: String(r[15] || "").trim() || "Sin Categoría",
       vendedor: vend,
       canal: (function () {
-        const nomCli = norm(r[13]) + " " + norm(r[34]);
-        for (let i = 0; i < CANAL_POR_CLIENTE.length; i++) {
-          if (nomCli.includes(norm(CANAL_POR_CLIENTE[i].match))) return CANAL_POR_CLIENTE[i].canal;
-        }
         const c = String(r[18] || "").trim() || "Sin Canal";
         return UNIFICAR_CANALES[c] || c;
       })(),
@@ -978,6 +1007,7 @@ function renderDatos(datos) {
   document.getElementById("sub-clientes").textContent =
     agrupar(datos, campoCli, true).length + (vistaClientes === "grupo" ? " clientes" : " sucursales");
 
+  renderDocumentos(datos);
   donut("ch-canal", porCanal.slice(0, 10));
   donut("ch-categoria", agrupar(datos, "categoria", true).slice(0, 10));
   evolucion(datos);
@@ -1052,6 +1082,46 @@ function cajaGrafico(id) {
 function mensajeGrafico(id, texto) {
   const caja = cajaGrafico(id);
   if (caja) caja.innerHTML = '<div class="empty">' + texto + '</div>';
+}
+
+// Detalle documento por documento: sirve para entender de dónde sale un número
+// (a qué contacto se facturó, con qué vendedor y en qué canal quedó).
+const MAX_DOCS = 300;
+function renderDocumentos(datos) {
+  const acc = {};
+  datos.forEach(r => {
+    const k = r.facturaId;
+    if (!acc[k]) acc[k] = {
+      fecha: r.fecha, ymd: r.ymd, tipo: r.esRemision ? "Remisión" : (r.esNC ? "Nota de Crédito" : "Factura"),
+      nro: r.factura, cliente: r.clienteCompleto, sucursal: r.sucursal,
+      vendedor: r.vendedor, canal: r.canal, monto: 0, lineas: 0
+    };
+    acc[k].monto += r.monto; acc[k].lineas++;
+  });
+  const docs = Object.values(acc).sort((a, b) => b.fecha - a.fecha || Math.abs(b.monto) - Math.abs(a.monto));
+  const el = document.getElementById("t-docs");
+  const sub = document.getElementById("sub-docs");
+  if (!docs.length) {
+    el.innerHTML = '<tbody><tr><td class="empty">Sin documentos con estos filtros</td></tr></tbody>';
+    if (sub) sub.textContent = "";
+    return;
+  }
+  if (sub) sub.textContent = docs.length + " documentos" + (docs.length > MAX_DOCS ? " · se listan los " + MAX_DOCS + " más recientes" : "");
+  const total = docs.reduce((s, d) => s + d.monto, 0);
+  let h = "<thead><tr><th style='width:78px'>Fecha</th><th style='width:104px'>Tipo</th>" +
+    "<th style='width:118px'>Número</th><th class='col-nombre'>Facturado a</th>" +
+    "<th class='col-nombre'>Vendedor</th><th style='width:150px'>Canal</th>" +
+    "<th class='num w-monto'>Sin IVA PYG</th></tr></thead><tbody>";
+  docs.slice(0, MAX_DOCS).forEach(d => {
+    const quien = d.cliente + (d.sucursal ? "  ·  " + d.sucursal : "");
+    h += "<tr><td>" + d.fecha.toLocaleDateString("es-PY") + "</td><td>" + d.tipo + "</td><td>" + esc(d.nro) +
+      "</td><td class='col-nombre' title='" + esc(quien) + "'><span class='txt'>" + esc(quien) + "</span></td>" +
+      "<td class='col-nombre' title='" + esc(d.vendedor) + "'><span class='txt'>" + esc(d.vendedor) + "</span></td>" +
+      "<td>" + esc(d.canal) + "</td><td class='num'>" + num(d.monto) + "</td></tr>";
+  });
+  h += "<tr class='total-row'><td colspan='6'>Total (" + docs.length + " documentos)</td><td class='num'>" +
+    num(total) + "</td></tr></tbody>";
+  el.innerHTML = h;
 }
 
 const PALETA = ["#f07d20", "#2f9e5f", "#3182ce", "#805ad5", "#d64545", "#d69e2e", "#319795", "#dd6b20", "#5a67d8", "#718096"];
