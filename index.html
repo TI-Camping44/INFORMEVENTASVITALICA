@@ -190,9 +190,9 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
     <div class="f-group"><label>Producto</label><div class="ms" id="ms-producto"></div></div>
     <div class="f-group"><label>Cliente</label><input type="text" id="f-cliente" placeholder="buscar cliente..." oninput="aplicar()"></div>
     <div class="f-group"><label>Documento</label><select id="f-doc" onchange="aplicar()">
-      <option value="">-- Facturas y remisiones --</option>
-      <option value="factura">Solo facturas</option>
-      <option value="remision">Solo remisiones (muestrarios)</option>
+      <option value="factura" selected>Solo facturas</option>
+      <option value="">Facturas + entregas sin facturar</option>
+      <option value="remision">Solo entregas sin facturar</option>
     </select></div>
     <div class="f-group"><label>Desde</label><input type="date" id="f-desde" onchange="aplicar()"></div>
     <div class="f-group"><label>Hasta</label><input type="date" id="f-hasta" onchange="aplicar()"></div>
@@ -210,8 +210,10 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
 
   <div id="vista-datos">
     <div class="kpi-row" id="kpis"></div>
-    <div class="note">Observación: importes sin IVA. Incluye <b>facturas</b> y <b>remisiones</b>
-      (órdenes de venta entregadas sin facturar: los muestrarios). Con el filtro «Documento» se separan.
+    <div class="note">Observación: importes sin IVA. Por defecto se muestran <b>solo facturas</b>.
+      Lo <b>entregado sin facturar</b> (órdenes de venta confirmadas y entregadas que todavía no
+      tienen factura: muestrarios y entregas pendientes de facturar) se cuenta aparte y se puede
+      sumar con el filtro «Documento».
       «Clientes activos» = clientes que compraron en los últimos <b id="nmeses-activo">3</b> meses.</div>
 
     <div class="grid-charts">
@@ -269,6 +271,16 @@ const CANALES = ["Mayorista", "Consumidor Final", "Gimnasios y Muestrarios", "Si
 // Canales que se muestran unificados. Se aplica acá también (no solo en el Apps
 // Script) para que tenga efecto inmediato, sin esperar el re-sync de la planilla.
 const UNIFICAR_CANALES = { "Distribuidor": "Mayorista" };
+
+// Canal forzado por CLIENTE, cuando el equipo de venta de Odoo no lo refleja
+// (gimnasios y distribuidoras cargados como "Consumidor final"). Tiene que ser
+// la misma lista que la del Apps Script.
+const CANAL_POR_CLIENTE = [
+  { match: "BAMBU",    canal: "Gimnasios y Muestrarios" },
+  { match: "BAMBÚ",    canal: "Gimnasios y Muestrarios" },
+  { match: "GARAGE",   canal: "Gimnasios y Muestrarios" },
+  { match: "EL NEGRO", canal: "Mayorista" }
+];
 const ICONO_CANAL = {
   "Mayorista": "🏢", "Consumidor Final": "🛍️",
   "Gimnasios y Muestrarios": "🏋️", "Sin Comisiones": "📄", "E-commerce": "🛒"
@@ -296,7 +308,7 @@ let FILAS = [];          // ventas normalizadas
 let METAS = null;        // objetivos leídos de CONFIG
 let PAGINA = "__resumen";
 let charts = {};
-let filtros = { doc: "", anio: "", mes: "", vendedores: [], canales: [], categorias: [], productos: [], clientes: [], cliente: "", desde: "", hasta: "" };
+let filtros = { doc: "factura", anio: "", mes: "", vendedores: [], canales: [], categorias: [], productos: [], clientes: [], cliente: "", desde: "", hasta: "" };
 let ordenTablas = {};   // por tabla: { col: "monto"|"cantidad"|"facturas"|"clave", dir: -1|1 }
 
 // ---------------------------------------------------------------- utils
@@ -544,6 +556,10 @@ function normalizarData(filas) {
       categoria: String(r[15] || "").trim() || "Sin Categoría",
       vendedor: vend,
       canal: (function () {
+        const nomCli = norm(r[13]) + " " + norm(r[34]);
+        for (let i = 0; i < CANAL_POR_CLIENTE.length; i++) {
+          if (nomCli.includes(norm(CANAL_POR_CLIENTE[i].match))) return CANAL_POR_CLIENTE[i].canal;
+        }
         const c = String(r[18] || "").trim() || "Sin Canal";
         return UNIFICAR_CANALES[c] || c;
       })(),
@@ -674,12 +690,12 @@ document.addEventListener("keydown", e => {
 });
 
 function limpiarFiltros() {
-  filtros.mes = ""; filtros.cliente = ""; filtros.desde = ""; filtros.hasta = ""; filtros.doc = "";
+  filtros.mes = ""; filtros.cliente = ""; filtros.desde = ""; filtros.hasta = ""; filtros.doc = "factura";
   filtros.vendedores = []; filtros.canales = []; filtros.categorias = [];
   filtros.productos = []; filtros.clientes = [];
   document.getElementById("f-mes").value = "";
   document.getElementById("f-cliente").value = "";
-  document.getElementById("f-doc").value = "";
+  document.getElementById("f-doc").value = "factura";
   document.getElementById("f-desde").value = "";
   document.getElementById("f-hasta").value = "";
   ["ms-vendedor", "ms-canal", "ms-categoria", "ms-producto"].forEach(id => {
@@ -699,7 +715,7 @@ function leerFiltrosDeUI() {
   filtros.desde = document.getElementById("f-desde").value;
   filtros.hasta = document.getElementById("f-hasta").value;
 }
-function filtrar() {
+function filtrar(ignorarDoc) {
   const cli = norm(filtros.cliente);
   return FILAS.filter(r => {
     if (filtros.anio && String(r.anio) !== String(filtros.anio)) return false;
@@ -712,8 +728,10 @@ function filtrar() {
     if (filtros.productos.length && !filtros.productos.includes(r.producto)) return false;
     if (filtros.clientes.length && !filtros.clientes.includes(r.cliente)) return false;
     if (cli && !norm(r.clienteCompleto).includes(cli) && !norm(r.cliente).includes(cli)) return false;
-    if (filtros.doc === "factura" && r.esRemision) return false;
-    if (filtros.doc === "remision" && !r.esRemision) return false;
+    if (!ignorarDoc) {
+      if (filtros.doc === "factura" && r.esRemision) return false;
+      if (filtros.doc === "remision" && !r.esRemision) return false;
+    }
     if (PAGINA !== "__resumen" && !PAGINA.startsWith("__") && r.canal !== PAGINA) return false;
     return true;
   });
@@ -897,14 +915,14 @@ function calcularKPIs(datos) {
            remisiones: remisiones.size, clientes: clientes.size, activos: clientesActivos.size,
            unidades: cantUnidades, ticket: lineas ? monto / lineas : 0, corte };
 }
-function renderKPIs(k) {
+function renderKPIs(k, kRem) {
+  const soloFacturas = filtros.doc === "factura";
   document.getElementById("kpis").innerHTML =
-    kpi("Monto s/IVA", gs(k.monto), k.montoRemision
-      ? num(k.unidades) + " unidades · incl. " + gs(k.montoRemision) + " en remisiones"
-      : num(k.unidades) + " unidades") +
-    kpi("Cant. Facturas", num(k.facturas),
-      k.remisiones ? num(k.remisiones) + " remisiones · " + num(k.lineas) + " líneas"
-                   : num(k.lineas) + " líneas") +
+    kpi(soloFacturas ? "Monto Facturado s/IVA" : "Monto s/IVA", gs(k.monto),
+      num(k.unidades) + " unidades" + (!soloFacturas && k.montoRemision ? " · incl. " + gs(k.montoRemision) + " en muestrarios" : "")) +
+    kpi("Entregado sin facturar", gs(kRem ? kRem.monto : 0),
+      soloFacturas ? "órdenes entregadas · NO suman al monto" : "órdenes entregadas · incluidas en el monto") +
+    kpi("Cant. Facturas", num(k.facturas), num(k.lineas) + " líneas") +
     kpi("Promedio de Tickets", gs(k.ticket), "promedio por línea (AVG)") +
     kpi("Clientes Activos", num(k.activos), "de " + num(k.clientes) + " · desde " + k.corte.toLocaleDateString("es-PY")) +
     kpi("Notas de Crédito", gs(k.nc), pct(Math.abs(k.nc), k.monto).toFixed(1) + "% de la venta", true);
@@ -925,7 +943,10 @@ function alternarClientes() {
 }
 
 function renderDatos(datos) {
-  renderKPIs(calcularKPIs(datos));
+  // Los muestrarios se muestran SIEMPRE en su propio KPI, aunque el filtro de
+  // documento los esté dejando afuera: así se ve qué queda sin contar.
+  const todosLosDocs = filtrar(true);
+  renderKPIs(calcularKPIs(datos), calcularKPIs(todosLosDocs.filter(r => r.esRemision)));
 
   tablaRanking("t-productos", agrupar(datos, "producto", true), "Producto", { cantidad: true, campo: "producto" });
   const campoCli = vistaClientes === "grupo" ? "cliente" : "clienteSucursal";
