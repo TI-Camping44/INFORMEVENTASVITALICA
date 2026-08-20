@@ -141,6 +141,16 @@ const MAPEO_CANALES = [
   { match: "ECOMMERCE",        canal: "E-commerce" }
 ];
 
+// 🏪 Canal forzado por CLIENTE. El equipo de venta de Odoo no siempre refleja el
+//    canal real: hay facturas a gimnasios y a distribuidoras cargadas con el
+//    equipo "Consumidor final". Lo que coincida acá manda sobre MAPEO_CANALES.
+const CANAL_POR_CLIENTE = [
+  { match: "BAMBU",    canal: "Gimnasios y Muestrarios" },
+  { match: "BAMBÚ",    canal: "Gimnasios y Muestrarios" },
+  { match: "GARAGE",   canal: "Gimnasios y Muestrarios" },
+  { match: "EL NEGRO", canal: "Mayorista" }
+];
+
 // 🛒 Clientes de e-commerce con nombre propio (Vitálica hoy no usa este bloque).
 const CLIENTES_ECOMMERCE = [];
 const GRUPO_ECOMMERCE_RESTO = "";
@@ -397,6 +407,14 @@ function actualizarDatosOdoo_(silencioso) {
         }
       }
 
+      // El cliente manda sobre el equipo de venta.
+      for (var iCC = 0; iCC < CANAL_POR_CLIENTE.length; iCC++) {
+        var claveCli = normTxt_(CANAL_POR_CLIENTE[iCC].match);
+        if (claveCli && (cNormCliente.indexOf(claveCli) >= 0 || normTxt_(entrega).indexOf(claveCli) >= 0)) {
+          canalFinal = CANAL_POR_CLIENTE[iCC].canal; break;
+        }
+      }
+
       // Facturas sin vendedor asignado: se descartan solo si está configurado así.
       var sinVendedor = (vNorm === "" || vNorm.indexOf("SIN VENDEDOR") >= 0 || vNorm === "NULL" || vNorm === "FALSE");
       if (sinVendedor && EXCLUIR_FACTURAS_SIN_VENDEDOR) return;
@@ -529,6 +547,13 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
       var clave = normTxt_(MAPEO_CANALES[i].match);
       if (clave && (tNorm.indexOf(clave) >= 0 || vNorm.indexOf(clave) >= 0)) { canalFinal = MAPEO_CANALES[i].canal; break; }
     }
+    for (var iCC = 0; iCC < CANAL_POR_CLIENTE.length; iCC++) {
+      var claveCli = normTxt_(CANAL_POR_CLIENTE[iCC].match);
+      if (claveCli && (cNormCliente.indexOf(claveCli) >= 0 || normTxt_(entrega).indexOf(claveCli) >= 0)) {
+        canalFinal = CANAL_POR_CLIENTE[iCC].canal; break;
+      }
+    }
+
     var sinVendedor = (vNorm === "" || vNorm.indexOf("SIN VENDEDOR") >= 0 || vNorm === "FALSE");
     var vendedorEtiquetado = (sinVendedor ? "Sin Vendedor" : vendedor.trim()) + " - " + canalFinal;
 
