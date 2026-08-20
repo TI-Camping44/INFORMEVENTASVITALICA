@@ -144,10 +144,15 @@ const MAPEO_CANALES = [
 // 🏪 Canal forzado por CLIENTE. El equipo de venta de Odoo no siempre refleja el
 //    canal real: hay facturas a gimnasios y a distribuidoras cargadas con el
 //    equipo "Consumidor final". Lo que coincida acá manda sobre MAPEO_CANALES.
+//    Ojo: acá no hay agrupación por RUC, así que hay que listar también los
+//    nombres de las sucursales que no repiten el de la casa matriz
+//    (ej. "GTC- FERNANDO ZONA SUR" no dice "GARAGE").
 const CANAL_POR_CLIENTE = [
   { match: "BAMBU",    canal: "Gimnasios y Muestrarios" },
   { match: "BAMBÚ",    canal: "Gimnasios y Muestrarios" },
+  { match: "BIGG",     canal: "Gimnasios y Muestrarios" },
   { match: "GARAGE",   canal: "Gimnasios y Muestrarios" },
+  { match: "GTC",      canal: "Gimnasios y Muestrarios" },
   { match: "EL NEGRO", canal: "Mayorista" }
 ];
 
