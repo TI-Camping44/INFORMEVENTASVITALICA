@@ -312,7 +312,8 @@ const VENDEDORES_EXCLUIDOS_DASH = [];
 const CATEGORIAS_EXCLUIDAS_DASH = ["MERCHANDISING", "MUESTRARIO"];
 // Clientes que no entran en el informe. Vacío = entran todos.
 // (Bambu, Garage Cross, GTC Bigg y Lichton/Fitway SÍ suman: son muestrarios.)
-const CLIENTES_EXCLUIDOS_DASH = [];
+// Las facturas que Vitálica se hace a sí misma no son venta: quedan fuera.
+const CLIENTES_EXCLUIDOS_DASH = ["VITALICA", "VITÁLICA"];
 
 // Cuántas filas se muestran en las tablas de ranking.
 const TOP_N = 15;
@@ -608,7 +609,9 @@ function normalizarData(filas) {
     const vend = soloNombre(r[17]) || "Sin Vendedor";
     if (contieneAlguna(vend, VENDEDORES_EXCLUIDOS_DASH)) continue;
     if (contieneAlguna(r[19], CATEGORIAS_EXCLUIDAS_DASH)) continue;
-    if (contieneAlguna(r[13], CLIENTES_EXCLUIDOS_DASH)) continue;
+    // Se compara contra el nombre de la ENTIDAD y por palabra completa, igual que
+    // el resto de las reglas: así no se cuela un cliente por parecido de nombre.
+    if (CLIENTES_EXCLUIDOS_DASH.some(x => contienePalabra(partirCliente(r[13]).base, x))) continue;
     const cli = partirCliente(r[13]);
     // La sucursal casi nunca está en el cliente: está en la DIRECCIÓN DE ENTREGA
     // (columna 35). Garage Cross factura a la casa matriz y entrega en cada GTC.
