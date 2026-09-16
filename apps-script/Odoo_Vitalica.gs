@@ -110,7 +110,8 @@ const PRODUCTOS_EXCLUIDOS = [];
 // 🚫 Clientes que no se traen. Vacío = se traen todos.
 //    Bambu, Garage Cross, GTC Bigg y Lichton/Fitway SÍ tienen que sumar:
 //    son muestrarios, así que no van acá.
-const CLIENTES_EXCLUIDOS = [];
+//    Las facturas que Vitálica se hace a sí misma no son venta: no se traen.
+const CLIENTES_EXCLUIDOS = ["VITALICA", "VITÁLICA"];
 
 // 🎯 Canales del panel (los del informe actual de Vitálica).
 //    OJO: si se cambian, hay que cambiarlos también en index.html y en la web app.
@@ -228,6 +229,18 @@ function contienePalabra_(txt, palabra) {
   while (i >= 0) {
     if (!esLetra(i === 0 ? "" : t[i - 1]) && !esLetra(t[i + p.length])) return true;
     i = t.indexOf(p, i + 1);
+  }
+  return false;
+}
+
+/**
+ * ¿El cliente está en la lista de excluidos? Se mira el nombre de la ENTIDAD y
+ * por palabra completa, para no descartar a alguien por parecido de nombre.
+ */
+function esClienteExcluido_(cliente) {
+  var entidad = nombreEntidad_(cliente);
+  for (var i = 0; i < CLIENTES_EXCLUIDOS.length; i++) {
+    if (contienePalabra_(entidad, CLIENTES_EXCLUIDOS[i])) return true;
   }
   return false;
 }
@@ -422,7 +435,7 @@ function actualizarDatosOdoo_(silencioso) {
       var descartar = false;
       if (contieneAlguna_(vNorm, VENDEDORES_EXCLUIDOS)) descartar = true;
       if (contieneAlguna_(pNorm, PRODUCTOS_EXCLUIDOS) || contieneAlguna_(descNorm, PRODUCTOS_EXCLUIDOS)) descartar = true;
-      if (contieneAlguna_(cNormCliente, CLIENTES_EXCLUIDOS)) descartar = true;
+      if (esClienteExcluido_(cliente)) descartar = true;
       // Categorías fuera del informe (Merchandising / Muestrario en el Looker actual).
       if (contieneAlguna_(normTxt_(categoriaOriginal), CATEGORIAS_EXCLUIDAS)) descartar = true;
       // Equipo excluido (ej. "No Pagar Comision"): no se descarta si es E-commerce.
@@ -582,7 +595,7 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
     // Mismas exclusiones que las facturas.
     if (contieneAlguna_(vNorm, VENDEDORES_EXCLUIDOS)) return;
     if (contieneAlguna_(pNorm, PRODUCTOS_EXCLUIDOS) || contieneAlguna_(descNorm, PRODUCTOS_EXCLUIDOS)) return;
-    if (contieneAlguna_(cNormCliente, CLIENTES_EXCLUIDOS)) return;
+    if (esClienteExcluido_(cliente)) return;
     if (contieneAlguna_(normTxt_(categoriaOriginal), CATEGORIAS_EXCLUIDAS)) return;
     if (contieneAlguna_(tNorm, EQUIPOS_EXCLUIDOS)) return;
 
