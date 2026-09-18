@@ -154,7 +154,11 @@ const CANAL_POR_CLIENTE = [
   { match: "BIGG",     canal: "Gimnasios y Muestrarios" },
   { match: "GARAGE",   canal: "Gimnasios y Muestrarios" },
   { match: "GTC",      canal: "Gimnasios y Muestrarios" },
-  { match: "EL NEGRO", canal: "Mayorista" }
+  { match: "EL NEGRO", canal: "Mayorista" },
+  // Venturio es cuenta mayorista, pero tiene documentos (sobre todo notas de
+  // crédito) cargados con el equipo "Consumidor final", lo que distorsionaba la
+  // venta neta de los dos canales.
+  { match: "VENTURIO", canal: "Mayorista" }
 ];
 
 // 🛒 Clientes de e-commerce con nombre propio (Vitálica hoy no usa este bloque).
