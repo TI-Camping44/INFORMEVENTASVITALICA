@@ -6,12 +6,19 @@
 //
 //  Guarda todo en la pestaña CONTACTOS de esta misma planilla.
 //
+//  ⚠️ VA EN UN PROYECTO NUEVO Y APARTE, no en el de la planilla.
+//  El proyecto de la planilla ya tiene la plataforma de objetivos, que también
+//  usa doGet: dos doGet en el mismo proyecto se pisan y rompen esa plataforma.
+//  Por eso este script es INDEPENDIENTE y abre la planilla por su ID.
+//
 //  PUBLICAR (una sola vez):
-//    Implementar ▸ Nueva implementación ▸ Aplicación web
-//      · Ejecutar como: Yo
-//      · Quién tiene acceso: Cualquier persona
-//    Copiar la URL que termina en /exec y pegarla en index.html, en
-//    CONTACTOS_WEBAPP_URL.
+//    1. Entrar a script.google.com ▸ Nuevo proyecto (nombre: "Contactos Vitálica").
+//    2. Pegar este archivo, guardar.
+//    3. Implementar ▸ Nueva implementación ▸ Aplicación web
+//         · Ejecutar como: Yo
+//         · Quién tiene acceso: Cualquier persona
+//    4. Autorizar cuando lo pida, y copiar la URL que termina en /exec:
+//       esa va en index.html, en CONTACTOS_WEBAPP_URL.
 //
 //  Si se edita este archivo: Implementar ▸ Gestionar implementaciones ▸
 //  editar la existente ▸ Nueva versión (así la URL no cambia).
@@ -21,11 +28,13 @@
 //  en el index.html; si queda vacía, no se pide clave.
 // ============================================================================
 
+// Planilla de ventas donde se guardan los contactos ("INFORME DE VENTAS VITALICA").
+const ID_PLANILLA = "1dyAO04QMXbQe5OtjLwSkJfyWe4UmLgiA5-cBmpvjdwk";
 const HOJA_CONTACTOS = "CONTACTOS";
 const CLAVE_CONTACTOS = "";   // ej: "vitalica2026"
 
 function hojaContactos_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.openById(ID_PLANILLA);
   let h = ss.getSheetByName(HOJA_CONTACTOS);
   if (!h) {
     h = ss.insertSheet(HOJA_CONTACTOS);
