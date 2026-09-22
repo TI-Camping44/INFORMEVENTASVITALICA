@@ -295,6 +295,13 @@ const ALIAS_CLIENTE = [
 ];
 
 // ====================== SEGUIMIENTO DE CLIENTES ======================
+// Planilla que mantiene el vendedor ("Planilla de seguimientos de clientes
+// consumidor final VITALICA"), publicada como CSV: Archivo ▸ Compartir ▸
+// Publicar en la web ▸ la hoja de seguimiento ▸ CSV. De ahí salen disciplina
+// deportiva, lugar de entrenamiento, alumno/coach y convenio, que no existen
+// en Odoo. Si queda vacío, la pestaña funciona igual y esas columnas van con
+// un guion.
+const SHEET_SEGUIMIENTO_URL = '';
 // El canal sobre el que el vendedor hace seguimiento (los mayoristas no entran).
 const CANAL_SEGUIMIENTO = "Consumidor Final";
 // Cuándo volver a escribirle: se lee la duración del producto de su propio
@@ -303,6 +310,13 @@ const CANAL_SEGUIMIENTO = "Consumidor Final";
 const DIAS_ANTES_DE_QUE_ACABE = 5;
 // Si el producto no dice cuántos servicios trae, se usa este plazo.
 const DIAS_CONTACTO_POR_DEFECTO = 45;
+// Líneas que NO generan seguimiento: no son productos que el cliente consuma,
+// así que no tiene sentido avisar cuando "se le acaban" (delivery, descuentos,
+// promos, servicios). Se comparan contra el nombre del producto.
+const SIN_SEGUIMIENTO_PRODUCTO = ["DELIVERY", "ENVIO", "ENVÍO", "FLETE", "DESCUENTO",
+                                  "PROMO", "EN TU ORDEN", "ANTICIPO", "SERVICIO"];
+// Y lo mismo por categoría.
+const SIN_SEGUIMIENTO_CATEGORIA = ["DESCUENTO", "SERVICIO", "DELIVERY"];
 // Un cliente está "dormido" si hace más de estos días que no compra.
 const DIAS_CLIENTE_DORMIDO = 90;
 // =====================================================================
@@ -438,6 +452,7 @@ async function iniciar() {
     if (rc.ok) { try { filasConfig = parseCSV(await rc.text()); } catch (e) { filasConfig = []; } }
 
     FILAS = normalizarData(filasData);
+    await cargarFichasClientes();
     METAS = leerConfig(filasConfig);
     if (!FILAS.length) throw new Error("La hoja DATA no tiene ventas. Corré «🔄 Descargar Ventas Odoo» en la planilla.");
 
@@ -523,7 +538,10 @@ function partirCliente(nombre) {
   let sinRuc = (m ? txt.slice(0, m.index) : txt).replace(/[,\-\s]+$/, "").trim();
   // La cédula también viene pegada con dos puntos ("MANUEL GIRETT :5148613-0"):
   // se saca para que el nombre quede limpio en las tablas.
-  sinRuc = sinRuc.replace(/\s*:\s*\d{4,}(-[\dkK])?\s*$/, "").trim() || sinRuc;
+  // La cédula puede estar al final o en el medio ("ENRRIQUE AYALA :732265-8 / MATHIAS
+  // CABRERA"): se saca en cualquier posición para que el nombre quede limpio.
+  sinRuc = sinRuc.replace(/\s*:\s*\d{4,}(-[\dkK])?/g, " ").replace(/\s{2,}/g, " ")
+                 .replace(/^[\s\/,-]+|[\s\/,-]+$/g, "").trim() || sinRuc;
   const coma = sinRuc.indexOf(",");
   return {
     ruc: ruc,
@@ -1248,11 +1266,20 @@ function sumarDias(fecha, dias) {
 const HOY_SEG = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 function diasEntre(a, b) { return Math.round((b - a) / 86400000); }
 
+/** ¿Esta línea es un producto que el cliente consume y hay que reponer? */
+function generaSeguimiento(r) {
+  if (r.monto <= 0) return false;                          // descuentos: vienen en negativo
+  if (contieneAlguna(r.producto, SIN_SEGUIMIENTO_PRODUCTO)) return false;
+  if (contieneAlguna(r.categoria, SIN_SEGUIMIENTO_CATEGORIA)) return false;
+  return true;
+}
+
 /** Compras de consumidor final, respetando los filtros salvo el de mes. */
 function filasSeguimiento() {
   const cli = norm(filtros.cliente);
   return FILAS.filter(r => {
     if (r.esNC || r.esRemision) return false;              // solo compras reales
+    if (!generaSeguimiento(r)) return false;               // delivery, descuentos, promos
     if (r.canal !== CANAL_SEGUIMIENTO) return false;
     if (filtros.anio && String(r.anio) !== String(filtros.anio)) return false;
     if (filtros.vendedores.length && !filtros.vendedores.includes(r.vendedor)) return false;
@@ -1286,6 +1313,7 @@ function renderSeguimiento() {
       ultima: null, productosUltima: [], montoUltima: 0, descuento: 0
     };
     const f = fichas[k];
+    if (!f.ficha) f.ficha = fichaDe(r);
     f.total += r.monto;
     f.compras[r.facturaId] = true;
     if (r.sucursal && !f.lugar) f.lugar = r.sucursal;
@@ -1305,8 +1333,11 @@ function renderSeguimiento() {
     const proximo = sumarDias(f.ultima, dias);
     const atraso = diasEntre(proximo, hoy);          // >0 = vencido
     const sinComprar = diasEntre(f.ultima, hoy);
+    const fi = f.ficha || {};
     return {
       ...f, proximo, atraso, sinComprar,
+      disciplina: fi.disciplina || "", rol: fi.rol || "", convenio: fi.convenio || "",
+      lugarFinal: fi.lugar || f.lugar || "",
       motivo: menor ? menor.producto : "",
       nCompras: Object.keys(f.compras).length,
       dormido: sinComprar > DIAS_CLIENTE_DORMIDO,
@@ -1337,7 +1368,13 @@ function renderSeguimiento() {
     '<div class="note">La fecha de <b>próximo contacto</b> sale de la duración del producto: el nombre dice ' +
       'cuántos servicios trae («Creatina 250gr <b>50 serv</b>» = 50 días) y se avisa ' + DIAS_ANTES_DE_QUE_ACABE +
       ' días antes de que se le acabe. Se toma lo primero que se le termina de su última compra. ' +
-      'Tocá las tarjetas de arriba para filtrar. El filtro de mes no se aplica acá: el seguimiento necesita todo el historial.</div>' +
+      'Tocá las tarjetas de arriba para filtrar. El filtro de mes no se aplica acá: el seguimiento necesita todo el historial.' +
+      (SHEET_SEGUIMIENTO_URL
+        ? ' <b>Disciplina, lugar, alumno/coach y convenio</b> salen de la planilla de seguimiento: ' +
+          lista.filter(x => x.disciplina || x.rol || x.convenio).length + ' de ' + lista.length +
+          ' clientes cruzados' + (FICHAS_INFO ? ' (' + esc(FICHAS_INFO) + ')' : '') + '.'
+        : ' <b>Falta configurar la planilla de seguimiento</b> para traer disciplina, lugar, alumno/coach y convenio.') +
+      '</div>' +
     '<div class="card"><h3>Clientes a seguir <small>' + visible.length + ' de ' + lista.length +
       '<button class="btn btn-sec" style="padding:3px 8px;font-size:10.5px;margin-left:8px" onclick="exportarSeguimiento()">⬇ Excel</button></small></h3>' +
       '<div class="tbl-scroll" style="max-height:560px"><table id="t-seg"></table></div></div>' +
@@ -1350,7 +1387,8 @@ function renderSeguimiento() {
     el.innerHTML = '<tbody><tr><td class="empty">Ningún cliente en este estado. 🎉</td></tr></tbody>';
   } else {
     let h = "<thead><tr><th style='width:34px'></th><th class='col-nombre'>Cliente</th>" +
-      "<th class='col-nombre'>Lugar de entrenamiento</th><th style='width:90px'>Última compra</th>" +
+      "<th class='col-nombre'>Lugar de entrenamiento</th><th class='col-nombre'>Disciplina</th>" +
+      "<th style='width:78px'>Alumno/Coach</th><th style='width:90px'>Última compra</th>" +
       "<th class='num' style='width:70px'>Días</th><th class='col-nombre'>Se le acaba primero</th>" +
       "<th style='width:96px'>Contactar</th><th class='num' style='width:74px'>Compras</th>" +
       "<th class='num w-monto'>Total comprado</th></tr></thead><tbody>";
@@ -1362,7 +1400,9 @@ function renderSeguimiento() {
         "title='Ver todo lo de este cliente'>" +
         "<td>" + semaforo + "</td>" +
         "<td class='col-nombre' title='" + esc(x.cliente) + "'><span class='txt'>" + esc(x.cliente) + "</span></td>" +
-        "<td class='col-nombre' title='" + esc(x.lugar) + "'><span class='txt'>" + esc(x.lugar || "—") + "</span></td>" +
+        "<td class='col-nombre' title='" + esc(x.lugarFinal) + "'><span class='txt'>" + esc(x.lugarFinal || "—") + "</span></td>" +
+        "<td class='col-nombre' title='" + esc(x.disciplina) + "'><span class='txt'>" + esc(x.disciplina || "—") + "</span></td>" +
+        "<td>" + esc(x.rol || "—") + "</td>" +
         "<td>" + x.ultima.toLocaleDateString("es-PY") + "</td>" +
         "<td class='num" + (x.dormido ? " neg" : "") + "'>" + x.sinComprar + "</td>" +
         "<td class='col-nombre' title='" + esc(x.motivo) + "'><span class='txt'>" + esc(x.motivo) + "</span></td>" +
@@ -1385,17 +1425,23 @@ function renderSeguimiento() {
     let h = "<thead><tr><th style='width:88px'>Fecha compra</th><th style='width:50px'>Año</th>" +
       "<th style='width:50px'>Mes</th><th class='col-nombre'>Nombre completo</th>" +
       "<th class='col-nombre'>Producto solicitado</th><th class='num w-monto'>Monto</th>" +
-      "<th class='num' style='width:74px'>Dto.</th><th class='col-nombre'>Lugar de entrenamiento</th>" +
+      "<th class='col-nombre'>Convenio</th><th class='col-nombre'>Disciplina</th>" +
+      "<th class='col-nombre'>Lugar de entrenamiento</th><th style='width:78px'>Alumno/Coach</th>" +
       "<th style='width:92px'>Próximo contacto</th></tr></thead><tbody>";
     det.forEach(r => {
+      const fi = fichaDe(r) || {};
       const prox = sumarDias(r.fecha, duracionProducto(r.producto));
       const vencido = prox < hoy;
       h += "<tr><td>" + r.fecha.toLocaleDateString("es-PY") + "</td><td>" + r.anio + "</td><td>" + r.mes + "</td>" +
         "<td class='col-nombre' title='" + esc(r.clienteCompleto) + "'><span class='txt'>" + esc(r.clienteCompleto) + "</span></td>" +
         "<td class='col-nombre' title='" + esc(r.producto) + "'><span class='txt'>" + esc(r.producto) + "</span></td>" +
         "<td class='num'>" + num(r.monto) + "</td>" +
-        "<td class='num'>" + (r.descuento ? r.descuento + "%" : "—") + "</td>" +
-        "<td class='col-nombre' title='" + esc(r.sucursal) + "'><span class='txt'>" + esc(r.sucursal || "—") + "</span></td>" +
+        "<td class='col-nombre' title='" + esc(fi.convenio) + "'><span class='txt'>" +
+          esc(fi.convenio || (r.descuento ? r.descuento + "% dto." : "—")) + "</span></td>" +
+        "<td class='col-nombre' title='" + esc(fi.disciplina) + "'><span class='txt'>" + esc(fi.disciplina || "—") + "</span></td>" +
+        "<td class='col-nombre' title='" + esc(fi.lugar || r.sucursal) + "'><span class='txt'>" +
+          esc(fi.lugar || r.sucursal || "—") + "</span></td>" +
+        "<td>" + esc(fi.rol || "—") + "</td>" +
         "<td class='" + (vencido ? "neg" : "pos") + "'>" + prox.toLocaleDateString("es-PY") + "</td></tr>";
     });
     h += "</tbody>";
@@ -1416,12 +1462,104 @@ function exportarSeguimiento() {
     "Fecha de compra": r.ymd, "Año": r.anio, "Mes": r.mes,
     "Nombre completo": r.clienteCompleto, "Producto solicitado": r.producto,
     "Monto compra": r.monto, "Descuento %": r.descuento,
-    "Lugar de entrenamiento": r.sucursal, "Vendedor": r.vendedor,
+    "Convenio": (fichaDe(r) || {}).convenio || "",
+    "Disciplina deportiva": (fichaDe(r) || {}).disciplina || "",
+    "Lugar de entrenamiento": (fichaDe(r) || {}).lugar || r.sucursal,
+    "Alumno / Coach": (fichaDe(r) || {}).rol || "", "Vendedor": r.vendedor,
     "Próximo contacto": ymd(sumarDias(r.fecha, duracionProducto(r.producto)))
   })));
   const libro = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(libro, hoja, "Seguimiento");
   XLSX.writeFile(libro, "Vitalica_Seguimiento.xlsx");
+}
+
+// Fichas que el vendedor mantiene a mano: clave (cédula o nombre) ➜ datos.
+let FICHAS_CLIENTE = {};
+let FICHAS_INFO = "";
+
+/** Los valores basura de la planilla ("0", montos en una columna equivocada). */
+function valorUtil(v) {
+  const t = String(v || "").trim();
+  if (!t || t === "0" || t === "-") return "";
+  if (/^[\d.,]+\s*Gs\.?$/i.test(t)) return "";
+  return t;
+}
+/** Cédula/RUC dentro del nombre: "MANUEL GIRETT :5148613-0" ➜ 5148613-0 */
+function cedulaDe(nombre) {
+  const m = String(nombre || "").match(/:\s*([\d.]{4,}-?[\dkK]?)/);
+  return m ? m[1].replace(/\./g, "") : "";
+}
+function clavesCliente(nombreCompleto, base) {
+  const ced = cedulaDe(nombreCompleto);
+  const claves = [];
+  if (ced) claves.push("c:" + ced);
+  const limpio = partirCliente(nombreCompleto).base;
+  if (limpio) claves.push("n:" + norm(limpio));
+  if (base) claves.push("n:" + norm(base));
+  return claves;
+}
+function fichaDe(r) {
+  const claves = clavesCliente(r.clienteCompleto, r.cliente);
+  for (let i = 0; i < claves.length; i++) if (FICHAS_CLIENTE[claves[i]]) return FICHAS_CLIENTE[claves[i]];
+  return null;
+}
+
+async function cargarFichasClientes() {
+  FICHAS_CLIENTE = {}; FICHAS_INFO = "";
+  if (!SHEET_SEGUIMIENTO_URL) return;
+  try {
+    const res = await fetch(SHEET_SEGUIMIENTO_URL + (SHEET_SEGUIMIENTO_URL.includes("?") ? "&" : "?") + "cb=" + Date.now());
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const filas = parseCSV(await res.text());
+
+    // Se ubican las columnas por su título, así no importa el orden.
+    let cab = -1, col = {};
+    for (let i = 0; i < Math.min(filas.length, 10); i++) {
+      const fila = (filas[i] || []).map(x => norm(x));
+      if (fila.some(x => x.includes("NOMBRE COMPLETO"))) {
+        cab = i;
+        fila.forEach((t, j) => {
+          if (t.includes("NOMBRE COMPLETO")) col.nombre = j;
+          else if (t.includes("CONVENIO")) col.convenio = j;
+          else if (t.includes("DISCIPLINA")) col.disciplina = j;
+          else if (t.includes("LUGAR")) col.lugar = j;
+          else if (t.includes("ALUMNO")) col.rol = j;
+        });
+        break;
+      }
+    }
+    if (cab < 0 || col.nombre === undefined) { FICHAS_INFO = "no se encontró la fila de títulos"; return; }
+
+    let n = 0;
+    for (let i = cab + 1; i < filas.length; i++) {
+      const f = filas[i]; if (!f) continue;
+      const nombre = String(f[col.nombre] || "").trim();
+      if (!nombre) continue;
+      const ficha = {
+        nombre: nombre,
+        disciplina: valorUtil(f[col.disciplina]),
+        lugar: valorUtil(f[col.lugar]),
+        rol: valorUtil(f[col.rol]),
+        convenio: valorUtil(f[col.convenio])
+      };
+      // Las filas van en orden, así que lo último que se lee es lo más nuevo;
+      // se completa campo por campo para no perder lo que ya estaba cargado.
+      clavesCliente(nombre, "").forEach(k => {
+        const prev = FICHAS_CLIENTE[k] || {};
+        FICHAS_CLIENTE[k] = {
+          nombre: ficha.nombre,
+          disciplina: ficha.disciplina || prev.disciplina || "",
+          lugar: ficha.lugar || prev.lugar || "",
+          rol: ficha.rol || prev.rol || "",
+          convenio: ficha.convenio || prev.convenio || ""
+        };
+      });
+      n++;
+    }
+    FICHAS_INFO = n + " filas leídas de la planilla de seguimiento";
+  } catch (e) {
+    FICHAS_INFO = "no se pudo leer la planilla de seguimiento (" + e.message + ")";
+  }
 }
 
 const PALETA = ["#f07d20", "#2f9e5f", "#3182ce", "#805ad5", "#d64545", "#d69e2e", "#319795", "#dd6b20", "#5a67d8", "#718096"];
