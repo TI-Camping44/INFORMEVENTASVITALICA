@@ -394,7 +394,8 @@ function actualizarDatosOdoo_(silencioso) {
 
   var rowsOut = [];
   if (lines && lines.length > 0) {
-    var moveIds = []; var productIds = []; lines.forEach(l => { if (l.move_id) moveIds.push(l.move_id[0]); if (l.product_id) productIds.push(l.product_id[0]); });
+    var moveIds = []; var productIds = []; var partnerIds = [];
+    lines.forEach(l => { if (l.move_id) moveIds.push(l.move_id[0]); if (l.product_id) productIds.push(l.product_id[0]); if (l.partner_id) partnerIds.push(l.partner_id[0]); });
     // 🏷️ Detecta el campo "Etiquetas" (Studio) de la factura, por si se usa para marcar canales.
     var CAMPO_ETIQUETA = "";
     try {
@@ -413,6 +414,8 @@ function actualizarDatosOdoo_(silencioso) {
     if (HAY_ENVIO) _moveFields.push("partner_shipping_id");
     var moves = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "read", [[...new Set(moveIds)]], { fields: _moveFields }); var moveMap = {}; moves.forEach(m => moveMap[m.id] = m);
     var products = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "product.product", "read", [[...new Set(productIds)]], { fields: ["categ_id", "product_brand_id"] }); var productMap = {}; products.forEach(p => productMap[p.id] = p);
+    // ☎️ Teléfonos de los clientes: el vendedor los necesita a mano para el seguimiento.
+    var telMap = telefonosDeClientes_(uid, pwd, partnerIds);
 
     lines.forEach(line => {
       if (line.price_total == 0 && line.price_subtotal == 0 && !line.product_id) return;
@@ -512,7 +515,8 @@ function actualizarDatosOdoo_(silencioso) {
       var montoPanel = (MONTO_BASE === "SIN_IVA") ? subtotal : total;
 
       var precioPromedio = cantidad !== 0 ? (subtotal / cantidad) : 0;
-      rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, grupoEcom, line.move_id[0], teamName, entrega]);
+      rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, grupoEcom, line.move_id[0], teamName, entrega,
+        (line.partner_id ? (telMap[line.partner_id[0]] || "") : "")]);
     });
   }
 
@@ -522,8 +526,8 @@ function actualizarDatosOdoo_(silencioso) {
     catch (e) { ss.toast("No se pudieron traer las remisiones: " + e.message, "⚠️", 10); }
   }
 
-  if (sheetData.getMaxColumns() < 37) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 37 - sheetData.getMaxColumns());
-  sheetData.getRange(1, 1, 1, 35).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega"]]).setFontWeight("bold");
+  if (sheetData.getMaxColumns() < 38) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 38 - sheetData.getMaxColumns());
+  sheetData.getRange(1, 1, 1, 36).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
   // Sello de última actualización: el dashboard lo muestra en el menú lateral.
   configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
@@ -533,6 +537,61 @@ function actualizarDatosOdoo_(silencioso) {
     (rowsOut.length - nRemisiones) + ` líneas de facturas y notas de crédito\n` +
     nRemisiones + ` líneas de remisiones (órdenes entregadas sin facturar)`);
 }
+
+/**
+ * Teléfonos de una lista de clientes, listos para el seguimiento.
+ *
+ * Devuelve { idCliente: "0981 123456 / 021 555555" }. Se leen el fijo y el celular
+ * y, si el contacto facturado no tiene ninguno (pasa con las direcciones de entrega,
+ * que en Odoo son contactos hijos), se usa el de la casa matriz.
+ *
+ * Nunca tumba la descarga: si el servidor rechaza algún campo, devuelve lo que pudo.
+ */
+function telefonosDeClientes_(uid, pwd, partnerIds) {
+  var mapa = {};
+  var ids = [...new Set((partnerIds || []).filter(function (x) { return x; }))];
+  if (!ids.length) return mapa;
+
+  function leer_(lista, campos) {
+    try {
+      return execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "res.partner", "read", [lista], { fields: campos }) || [];
+    } catch (e) { return []; }
+  }
+  function junta_(p) {
+    var v = [];
+    [p.mobile, p.phone].forEach(function (t) {
+      t = (t === false || t == null) ? "" : String(t).trim();
+      // El mismo número cargado en los dos campos no se repite.
+      if (t && v.every(function (x) { return normTel_(x) !== normTel_(t); })) v.push(t);
+    });
+    return v.join(" / ");
+  }
+
+  var socios = leer_(ids, ["phone", "mobile", "parent_id"]);
+  if (!socios.length) socios = leer_(ids, ["phone", "parent_id"]);   // instalaciones sin "mobile"
+
+  var faltan = [], padreDe = {};
+  socios.forEach(function (p) {
+    var tel = junta_(p);
+    if (tel) { mapa[p.id] = tel; return; }
+    if (p.parent_id) { padreDe[p.id] = p.parent_id[0]; faltan.push(p.parent_id[0]); }
+  });
+
+  if (faltan.length) {
+    var padres = leer_([...new Set(faltan)], ["phone", "mobile"]);
+    if (!padres.length) padres = leer_([...new Set(faltan)], ["phone"]);
+    var telPadre = {};
+    padres.forEach(function (p) { telPadre[p.id] = junta_(p); });
+    Object.keys(padreDe).forEach(function (hijo) {
+      var t = telPadre[padreDe[hijo]];
+      if (t) mapa[hijo] = t;
+    });
+  }
+  return mapa;
+}
+
+/** Sólo los dígitos, para comparar dos números sin importar cómo estén escritos. */
+function normTel_(t) { return String(t || "").replace(/\D/g, ""); }
 
 /**
  * Trae las ÓRDENES DE VENTA entregadas y todavía no facturadas (los muestrarios)
@@ -566,8 +625,9 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
     }
   }
 
-  var mapaOrden = {}, ids = [];
-  ordenes.forEach(function (o) { mapaOrden[o.id] = o; ids.push(o.id); });
+  var mapaOrden = {}, ids = [], partnerIds = [];
+  ordenes.forEach(function (o) { mapaOrden[o.id] = o; ids.push(o.id); if (o.partner_id) partnerIds.push(o.partner_id[0]); });
+  var telMap = telefonosDeClientes_(uid, pwd, partnerIds);
 
   var lineas = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order.line", "search_read",
     [[["order_id", "in", ids]]],
@@ -634,7 +694,8 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
     rowsOut.push(["Odoo", fechaStr, Number(f[0]), Number(f[1]), Number(f[2]), "Remisión", orden.name || "",
       fechaStr, 0, "Contado", total, total, 1, cliente, marcaOriginal, marcaFinal, unidadNegocio,
       vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(l.discount || 0),
-      precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, "", "so-" + orden.id, teamName, entrega]);
+      precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, "", "so-" + orden.id, teamName, entrega,
+      (orden.partner_id ? (telMap[orden.partner_id[0]] || "") : "")]);
     agregadas++;
   });
   return agregadas;
