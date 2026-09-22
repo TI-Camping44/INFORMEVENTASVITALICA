@@ -310,6 +310,13 @@ const CANAL_SEGUIMIENTO = "Consumidor Final";
 const DIAS_ANTES_DE_QUE_ACABE = 5;
 // Si el producto no dice cuántos servicios trae, se usa este plazo.
 const DIAS_CONTACTO_POR_DEFECTO = 45;
+// Líneas que NO generan seguimiento: no son productos que el cliente consuma,
+// así que no tiene sentido avisar cuando "se le acaban" (delivery, descuentos,
+// promos, servicios). Se comparan contra el nombre del producto.
+const SIN_SEGUIMIENTO_PRODUCTO = ["DELIVERY", "ENVIO", "ENVÍO", "FLETE", "DESCUENTO",
+                                  "PROMO", "EN TU ORDEN", "ANTICIPO", "SERVICIO"];
+// Y lo mismo por categoría.
+const SIN_SEGUIMIENTO_CATEGORIA = ["DESCUENTO", "SERVICIO", "DELIVERY"];
 // Un cliente está "dormido" si hace más de estos días que no compra.
 const DIAS_CLIENTE_DORMIDO = 90;
 // =====================================================================
@@ -1259,11 +1266,20 @@ function sumarDias(fecha, dias) {
 const HOY_SEG = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 function diasEntre(a, b) { return Math.round((b - a) / 86400000); }
 
+/** ¿Esta línea es un producto que el cliente consume y hay que reponer? */
+function generaSeguimiento(r) {
+  if (r.monto <= 0) return false;                          // descuentos: vienen en negativo
+  if (contieneAlguna(r.producto, SIN_SEGUIMIENTO_PRODUCTO)) return false;
+  if (contieneAlguna(r.categoria, SIN_SEGUIMIENTO_CATEGORIA)) return false;
+  return true;
+}
+
 /** Compras de consumidor final, respetando los filtros salvo el de mes. */
 function filasSeguimiento() {
   const cli = norm(filtros.cliente);
   return FILAS.filter(r => {
     if (r.esNC || r.esRemision) return false;              // solo compras reales
+    if (!generaSeguimiento(r)) return false;               // delivery, descuentos, promos
     if (r.canal !== CANAL_SEGUIMIENTO) return false;
     if (filtros.anio && String(r.anio) !== String(filtros.anio)) return false;
     if (filtros.vendedores.length && !filtros.vendedores.includes(r.vendedor)) return false;
