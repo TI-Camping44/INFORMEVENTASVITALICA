@@ -103,6 +103,18 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 .pos { color: var(--green); font-weight: 700; }
 .neg { color: var(--red); font-weight: 700; }
 .chart-box { position: relative; height: 260px; }
+/* Chips del filtro por antigüedad de la última compra. */
+/* Ventanita para registrar un contacto. */
+.dlg-fondo { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 900;
+             display: flex; align-items: center; justify-content: center; padding: 16px; }
+.dlg { background: #fff; border-radius: 10px; padding: 18px 20px; width: 100%; max-width: 420px;
+       box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.dlg input { padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-family: inherit; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chips .chip { background: #fff; border: 1px solid var(--border); border-radius: 999px;
+               padding: 4px 11px; font-size: 11.5px; cursor: pointer; user-select: none; }
+.chips .chip:hover { background: var(--gray-chip); }
+.chips .chip-on { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 700; }
 .chart-box .empty { display: flex; align-items: center; justify-content: center; height: 100%; }
 /* Fila de gráficos arriba de todo: la evolución ancha y las dos tortas al lado. */
 .grid-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 12px; margin-bottom: 12px; }
@@ -249,6 +261,26 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   </div>
 
   <div id="vista-seguimiento" class="hide"></div>
+
+  <div id="dlg-contacto" class="dlg-fondo hide" onclick="if(event.target===this)cerrarContacto()">
+    <div class="dlg">
+      <h3 style="margin:0 0 4px">Registrar contacto</h3>
+      <div id="dlg-cliente" style="font-weight:700;color:var(--brand);margin-bottom:10px"></div>
+      <label style="font-size:11px;color:var(--muted);font-weight:700">FECHA DEL CONTACTO</label>
+      <input type="date" id="dlg-fecha" style="width:100%;margin:3px 0 10px">
+      <label style="font-size:11px;color:var(--muted);font-weight:700">NOTA (opcional)</label>
+      <input type="text" id="dlg-nota" placeholder="ej: pidió que le escriba en octubre" style="width:100%;margin:3px 0 12px">
+      <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:6px">¿CÓMO SALIÓ?</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn" onclick="registrarContacto('Compró')">🛒 Compró</button>
+        <button class="btn btn-sec" onclick="registrarContacto('No compró')">🙁 No compró</button>
+        <button class="btn btn-sec" onclick="registrarContacto('No contesta')">📵 No contesta</button>
+      </div>
+      <div style="text-align:right;margin-top:14px">
+        <button class="btn btn-sec" onclick="cerrarContacto()">Cancelar</button>
+      </div>
+    </div>
+  </div>
   <div id="vista-objetivos" class="hide"></div>
   <div id="vista-nc" class="hide"></div>
 </main>
@@ -302,6 +334,12 @@ const ALIAS_CLIENTE = [
 // en Odoo. Si queda vacío, la pestaña funciona igual y esas columnas van con
 // un guion.
 const SHEET_SEGUIMIENTO_URL = '';
+// Aplicación web que registra los contactos (archivo WebApp_Contactos.gs
+// publicado como aplicación web). Con esto el botón "Contacté" del panel
+// escribe en la pestaña CONTACTOS de la planilla. Termina en /exec.
+// Si queda vacía, el botón igual funciona pero solo guarda en ESTE navegador.
+const CONTACTOS_WEBAPP_URL = '';
+const CONTACTOS_CLAVE = '';   // solo si se puso una clave en el .gs
 // El canal sobre el que el vendedor hace seguimiento (los mayoristas no entran).
 const CANAL_SEGUIMIENTO = "Consumidor Final";
 // Cuándo volver a escribirle: se lee la duración del producto de su propio
@@ -319,6 +357,12 @@ const SIN_SEGUIMIENTO_PRODUCTO = ["DELIVERY", "ENVIO", "ENVÍO", "FLETE", "DESCU
 const SIN_SEGUIMIENTO_CATEGORIA = ["DESCUENTO", "SERVICIO", "DELIVERY"];
 // Un cliente está "dormido" si hace más de estos días que no compra.
 const DIAS_CLIENTE_DORMIDO = 90;
+// Cuánto tiempo sigue siendo útil un aviso vencido. Más viejo que esto ya no es
+// "hay que contactarlo por su recompra": es un cliente a reactivar, y va a la
+// tarjeta de dormidos. Evita que el arranque del sistema muestre meses de atraso.
+const DIAS_VENTANA_CONTACTO = 45;
+// Si ya se lo contactó y no compró, cuándo volver a intentarlo.
+const DIAS_RECONTACTO = 30;
 // =====================================================================
 
 const CANAL_POR_CLIENTE = [
@@ -453,6 +497,7 @@ async function iniciar() {
 
     FILAS = normalizarData(filasData);
     await cargarFichasClientes();
+    await cargarContactos();
     METAS = leerConfig(filasConfig);
     if (!FILAS.length) throw new Error("La hoja DATA no tiene ventas. Corré «🔄 Descargar Ventas Odoo» en la planilla.");
 
@@ -1290,8 +1335,20 @@ function filasSeguimiento() {
   });
 }
 
-let filtroSeg = "";   // "" | vencidos | semana | dormidos
+let filtroSeg = "";   // "" | vencidos | semana | dormidos | contactados
 function verSeguimiento(estado) { filtroSeg = estado; renderSeguimiento(); }
+
+// Segundo filtro, por hace cuánto que no compran.
+const RANGOS_RECENCIA = [
+  { id: "",    lbl: "Cualquier antigüedad", min: 0,   max: 999999 },
+  { id: "30",  lbl: "Hasta 30 días",        min: 0,   max: 30 },
+  { id: "60",  lbl: "31 a 60 días",         min: 31,  max: 60 },
+  { id: "90",  lbl: "61 a 90 días",         min: 61,  max: 90 },
+  { id: "180", lbl: "91 a 180 días",        min: 91,  max: 180 },
+  { id: "mas", lbl: "Más de 180 días",      min: 181, max: 999999 }
+];
+let filtroRec = "";
+function verRecencia(id) { filtroRec = id; renderSeguimiento(); }
 
 function renderSeguimiento() {
   const cont = document.getElementById("vista-seguimiento");
@@ -1330,28 +1387,50 @@ function renderSeguimiento() {
     // Se contacta cuando se le acaba lo PRIMERO que compró.
     const menor = f.productosUltima.reduce((a, p) => (!a || p.dias < a.dias) ? p : a, null);
     const dias = menor ? menor.dias : DIAS_CONTACTO_POR_DEFECTO;
-    const proximo = sumarDias(f.ultima, dias);
-    const atraso = diasEntre(proximo, hoy);          // >0 = vencido
+    let proximo = sumarDias(f.ultima, dias);
+    let atraso = diasEntre(proximo, hoy);            // >0 = vencido
     const sinComprar = diasEntre(f.ultima, hoy);
     const fi = f.ficha || {};
+    // Si ya lo contactaron DESPUÉS de esa compra, el aviso se apaga y se vuelve
+    // a intentar más adelante.
+    const delPanel = contactoDe(f.cliente);
+    const fContacto = [fi.contactado, delPanel && delPanel.fecha]
+      .filter(Boolean).sort((a, b) => b - a)[0] || null;
+    const contactado = (fContacto && fContacto >= f.ultima) ? fContacto : null;
+    const resultado = (delPanel && contactado && delPanel.fecha >= f.ultima) ? delPanel.resultado : "";
+    if (contactado) {
+      const reintento = sumarDias(contactado, DIAS_RECONTACTO);
+      if (reintento > proximo) { proximo = reintento; atraso = diasEntre(proximo, hoy); }
+    }
     return {
-      ...f, proximo, atraso, sinComprar,
+      ...f, proximo, atraso, sinComprar, contactado, resultado,
+      nota: (delPanel && delPanel.nota) || fi.nota || "",
       disciplina: fi.disciplina || "", rol: fi.rol || "", convenio: fi.convenio || "",
       lugarFinal: fi.lugar || f.lugar || "",
       motivo: menor ? menor.producto : "",
       nCompras: Object.keys(f.compras).length,
       dormido: sinComprar > DIAS_CLIENTE_DORMIDO,
-      estado: atraso > 0 ? "vencido" : (atraso >= -7 ? "semana" : "aldia")
+      // Un aviso vencido hace mucho ya no es una recompra que se pueda salvar:
+      // ese cliente es para reactivar, no para "contactar ya".
+      estado: contactado && atraso <= 0 ? "contactado"
+        : atraso > DIAS_VENTANA_CONTACTO ? "reactivar"
+          : atraso > 0 ? "vencido"
+            : atraso >= -7 ? "semana" : "aldia"
     };
   }).sort((a, b) => a.proximo - b.proximo);
 
   const vencidos = lista.filter(x => x.estado === "vencido");
   const semana = lista.filter(x => x.estado === "semana");
-  const dormidos = lista.filter(x => x.dormido);
+  const reactivar = lista.filter(x => x.estado === "reactivar" || (x.dormido && x.estado !== "contactado"));
+  const contactados = lista.filter(x => x.estado === "contactado");
 
-  const visible = filtroSeg === "vencidos" ? vencidos
+  let visible = filtroSeg === "vencidos" ? vencidos
     : filtroSeg === "semana" ? semana
-      : filtroSeg === "dormidos" ? dormidos : lista;
+      : filtroSeg === "dormidos" ? reactivar
+        : filtroSeg === "contactados" ? contactados : lista;
+
+  const rango = RANGOS_RECENCIA.find(r => r.id === filtroRec) || RANGOS_RECENCIA[0];
+  if (rango.id) visible = visible.filter(x => x.sinComprar >= rango.min && x.sinComprar <= rango.max);
 
   const tarjeta = (id, lbl, val, sub, activo) =>
     '<div class="kpi" style="cursor:pointer' + (activo ? ';border-top-color:#2f9e5f' : '') +
@@ -1360,21 +1439,34 @@ function renderSeguimiento() {
 
   cont.innerHTML =
     '<div class="kpi-row">' +
-      tarjeta("vencidos", "🔴 Para contactar ya", num(vencidos.length), "se les pasó la fecha", filtroSeg === "vencidos") +
+      tarjeta("vencidos", "🔴 Para contactar ya", num(vencidos.length), "se les pasó la fecha hace poco", filtroSeg === "vencidos") +
       tarjeta("semana", "🟡 Esta semana", num(semana.length), "en los próximos 7 días", filtroSeg === "semana") +
-      tarjeta("dormidos", "😴 Dormidos", num(dormidos.length), "sin comprar hace +" + DIAS_CLIENTE_DORMIDO + " días", filtroSeg === "dormidos") +
+      tarjeta("dormidos", "😴 Para reactivar", num(reactivar.length), "dormidos o con el aviso muy vencido", filtroSeg === "dormidos") +
+      tarjeta("contactados", "✅ Contactados", num(contactados.length), "marcados en la planilla", filtroSeg === "contactados") +
       tarjeta("", "👥 Todos", num(lista.length), "clientes de " + esc(CANAL_SEGUIMIENTO), filtroSeg === "") +
     '</div>' +
     '<div class="note">La fecha de <b>próximo contacto</b> sale de la duración del producto: el nombre dice ' +
       'cuántos servicios trae («Creatina 250gr <b>50 serv</b>» = 50 días) y se avisa ' + DIAS_ANTES_DE_QUE_ACABE +
       ' días antes de que se le acabe. Se toma lo primero que se le termina de su última compra. ' +
-      'Tocá las tarjetas de arriba para filtrar. El filtro de mes no se aplica acá: el seguimiento necesita todo el historial.' +
+      'Tocá las tarjetas de arriba para filtrar. El filtro de mes no se aplica acá: el seguimiento necesita todo el historial. ' +
+      'Para marcar que ya se lo contactó, poné la fecha en una columna <b>CONTACTADO</b> de la planilla de seguimiento: ' +
+      'el aviso se apaga y vuelve a aparecer ' + DIAS_RECONTACTO + ' días después si no compró. ' +
+      'Un aviso vencido hace más de ' + DIAS_VENTANA_CONTACTO + ' días pasa a «Para reactivar».' +
       (SHEET_SEGUIMIENTO_URL
         ? ' <b>Disciplina, lugar, alumno/coach y convenio</b> salen de la planilla de seguimiento: ' +
           lista.filter(x => x.disciplina || x.rol || x.convenio).length + ' de ' + lista.length +
           ' clientes cruzados' + (FICHAS_INFO ? ' (' + esc(FICHAS_INFO) + ')' : '') + '.'
         : ' <b>Falta configurar la planilla de seguimiento</b> para traer disciplina, lugar, alumno/coach y convenio.') +
       '</div>' +
+    '<div class="chips" style="margin-bottom:10px">' +
+      '<span style="font-size:11px;color:var(--muted);font-weight:700;margin-right:4px">SIN COMPRAR HACE:</span>' +
+      RANGOS_RECENCIA.map(r => {
+        const n = r.id ? lista.filter(x => x.sinComprar >= r.min && x.sinComprar <= r.max).length : lista.length;
+        return '<span class="chip' + (filtroRec === r.id ? ' chip-on' : '') + '" onclick="verRecencia(\'' + r.id + '\')">' +
+          r.lbl + ' <b>' + n + '</b></span>';
+      }).join("") +
+    '</div>' +
+    '<div id="aviso-seg" style="font-size:11.5px;font-weight:700;min-height:16px;margin-bottom:4px"></div>' +
     '<div class="card"><h3>Clientes a seguir <small>' + visible.length + ' de ' + lista.length +
       '<button class="btn btn-sec" style="padding:3px 8px;font-size:10.5px;margin-left:8px" onclick="exportarSeguimiento()">⬇ Excel</button></small></h3>' +
       '<div class="tbl-scroll" style="max-height:560px"><table id="t-seg"></table></div></div>' +
@@ -1390,10 +1482,13 @@ function renderSeguimiento() {
       "<th class='col-nombre'>Lugar de entrenamiento</th><th class='col-nombre'>Disciplina</th>" +
       "<th style='width:78px'>Alumno/Coach</th><th style='width:90px'>Última compra</th>" +
       "<th class='num' style='width:70px'>Días</th><th class='col-nombre'>Se le acaba primero</th>" +
-      "<th style='width:96px'>Contactar</th><th class='num' style='width:74px'>Compras</th>" +
+      "<th style='width:96px'>Contactar</th><th style='width:112px'>Ya contactado</th>" +
+      "<th style='width:96px'></th><th class='num' style='width:74px'>Compras</th>" +
       "<th class='num w-monto'>Total comprado</th></tr></thead><tbody>";
     visible.forEach(x => {
-      const semaforo = x.estado === "vencido" ? "🔴" : (x.estado === "semana" ? "🟡" : "🟢");
+      const semaforo = x.estado === "contactado" ? "✅"
+        : x.estado === "reactivar" ? "😴"
+          : x.estado === "vencido" ? "🔴" : (x.estado === "semana" ? "🟡" : "🟢");
       const cuando = x.atraso > 0 ? x.proximo.toLocaleDateString("es-PY") + " (hace " + x.atraso + "d)"
                                   : x.proximo.toLocaleDateString("es-PY");
       h += "<tr class='clickable' onclick=\"filtrarPorCliente('" + esc(x.cliente).replace(/'/g, "\\'") + "')\" " +
@@ -1406,7 +1501,14 @@ function renderSeguimiento() {
         "<td>" + x.ultima.toLocaleDateString("es-PY") + "</td>" +
         "<td class='num" + (x.dormido ? " neg" : "") + "'>" + x.sinComprar + "</td>" +
         "<td class='col-nombre' title='" + esc(x.motivo) + "'><span class='txt'>" + esc(x.motivo) + "</span></td>" +
-        "<td class='" + (x.atraso > 0 ? "neg" : "") + "'>" + cuando + "</td>" +
+        "<td class='" + (x.atraso > 0 && x.estado !== "contactado" ? "neg" : "") + "'>" + cuando + "</td>" +
+        "<td class='" + (x.contactado ? "pos" : "") + "' title='" + esc(x.nota) + "'>" +
+          (x.contactado ? x.contactado.toLocaleDateString("es-PY") +
+            (x.resultado ? "<div style='font-size:10px;color:var(--muted)'>" + esc(x.resultado) + "</div>" : "")
+            : "—") + "</td>" +
+        "<td><button class='btn btn-sec' style='padding:3px 8px;font-size:10.5px' " +
+          "onclick=\"event.stopPropagation();abrirContacto('" + esc(x.cliente).replace(/'/g, "\\'") + "')\">" +
+          (x.contactado ? "Actualizar" : "✅ Contacté") + "</button></td>" +
         "<td class='num'>" + x.nCompras + "</td>" +
         "<td class='num'>" + num(x.total) + "</td></tr>";
     });
@@ -1524,6 +1626,10 @@ async function cargarFichasClientes() {
           else if (t.includes("DISCIPLINA")) col.disciplina = j;
           else if (t.includes("LUGAR")) col.lugar = j;
           else if (t.includes("ALUMNO")) col.rol = j;
+          // "CONTACTADO" / "ULTIMO CONTACTO": la fecha en que el vendedor ya le
+          // escribió. Ojo de no confundirla con "PROXIMO CONTACTO".
+          else if (t.includes("CONTACTAD") || t.includes("ULTIMO CONTACTO")) col.contactado = j;
+          else if (t.includes("NOTA") || t.includes("OBSERVACI")) col.nota = j;
         });
         break;
       }
@@ -1540,7 +1646,9 @@ async function cargarFichasClientes() {
         disciplina: valorUtil(f[col.disciplina]),
         lugar: valorUtil(f[col.lugar]),
         rol: valorUtil(f[col.rol]),
-        convenio: valorUtil(f[col.convenio])
+        convenio: valorUtil(f[col.convenio]),
+        contactado: col.contactado !== undefined ? aFecha(valorUtil(f[col.contactado])) : null,
+        nota: col.nota !== undefined ? valorUtil(f[col.nota]) : ""
       };
       // Las filas van en orden, así que lo último que se lee es lo más nuevo;
       // se completa campo por campo para no perder lo que ya estaba cargado.
@@ -1551,7 +1659,11 @@ async function cargarFichasClientes() {
           disciplina: ficha.disciplina || prev.disciplina || "",
           lugar: ficha.lugar || prev.lugar || "",
           rol: ficha.rol || prev.rol || "",
-          convenio: ficha.convenio || prev.convenio || ""
+          convenio: ficha.convenio || prev.convenio || "",
+          // De los contactos se guarda el más reciente.
+          contactado: (ficha.contactado && (!prev.contactado || ficha.contactado > prev.contactado))
+            ? ficha.contactado : (prev.contactado || null),
+          nota: ficha.nota || prev.nota || ""
         };
       });
       n++;
@@ -1560,6 +1672,97 @@ async function cargarFichasClientes() {
   } catch (e) {
     FICHAS_INFO = "no se pudo leer la planilla de seguimiento (" + e.message + ")";
   }
+}
+
+// ------------------------- registro de contactos -------------------------
+// Los contactos viven en la planilla (pestaña CONTACTOS) y además se guardan en
+// este navegador, para que el tilde se vea al instante sin esperar al servidor.
+let CONTACTOS = {};        // clave de cliente ➜ { fecha, resultado, nota }
+
+function claveContacto(nombre) { return "n:" + norm(partirCliente(nombre).base); }
+function guardarLocal() {
+  try { localStorage.setItem("vitalica_contactos", JSON.stringify(
+    Object.keys(CONTACTOS).reduce((a, k) => { a[k] = { ...CONTACTOS[k], fecha: ymd(CONTACTOS[k].fecha) }; return a; }, {})
+  )); } catch (e) { /* sin localStorage se sigue igual */ }
+}
+function leerLocal() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("vitalica_contactos") || "{}");
+    Object.keys(raw).forEach(k => {
+      const f = aFecha(raw[k].fecha);
+      if (f && (!CONTACTOS[k] || f > CONTACTOS[k].fecha)) CONTACTOS[k] = { ...raw[k], fecha: f };
+    });
+  } catch (e) { /* idem */ }
+}
+
+async function cargarContactos() {
+  CONTACTOS = {};
+  if (CONTACTOS_WEBAPP_URL) {
+    try {
+      const res = await fetch(CONTACTOS_WEBAPP_URL + "?cb=" + Date.now());
+      const d = await res.json();
+      (d.contactos || []).forEach(c => {
+        const f = aFecha(c.fecha); if (!f) return;
+        const k = claveContacto(c.cliente);
+        if (!CONTACTOS[k] || f > CONTACTOS[k].fecha) CONTACTOS[k] = { fecha: f, resultado: c.resultado, nota: c.nota };
+      });
+    } catch (e) { console.warn("No se pudieron leer los contactos:", e.message); }
+  }
+  leerLocal();
+}
+
+function contactoDe(cliente) { return CONTACTOS[claveContacto(cliente)] || null; }
+
+// --- ventanita para registrar el contacto ---
+let clienteEnRegistro = null;
+function abrirContacto(cliente) {
+  clienteEnRegistro = cliente;
+  document.getElementById("dlg-cliente").textContent = cliente;
+  document.getElementById("dlg-nota").value = "";
+  document.getElementById("dlg-fecha").value = ymd(new Date());
+  document.getElementById("dlg-contacto").classList.remove("hide");
+}
+function cerrarContacto() { document.getElementById("dlg-contacto").classList.add("hide"); clienteEnRegistro = null; }
+
+async function registrarContacto(resultado) {
+  if (!clienteEnRegistro) return;
+  const cliente = clienteEnRegistro;
+  const nota = document.getElementById("dlg-nota").value.trim();
+  const fecha = aFecha(document.getElementById("dlg-fecha").value) || new Date();
+  const vendedor = (filasSeguimiento().find(r => r.cliente === cliente) || {}).vendedor || "";
+  const cedula = (function () {
+    const r = filasSeguimiento().find(x => x.cliente === cliente);
+    return r ? cedulaDe(r.clienteCompleto) : "";
+  })();
+
+  CONTACTOS[claveContacto(cliente)] = { fecha, resultado, nota };
+  guardarLocal();
+  cerrarContacto();
+  renderSeguimiento();
+
+  if (!CONTACTOS_WEBAPP_URL) {
+    avisoSeg("Guardado solo en este navegador: falta configurar CONTACTOS_WEBAPP_URL.", true);
+    return;
+  }
+  try {
+    // Content-Type text/plain para que el navegador no pida permiso previo (CORS).
+    const res = await fetch(CONTACTOS_WEBAPP_URL, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ cliente, cedula, vendedor, resultado, nota, fecha: ymd(fecha), clave: CONTACTOS_CLAVE })
+    });
+    const d = await res.json().catch(() => ({ ok: true }));
+    avisoSeg(d.ok ? "Contacto registrado en la planilla ✔" : ("No se pudo guardar: " + (d.error || "")), !d.ok);
+  } catch (e) {
+    avisoSeg("Quedó guardado en este navegador, pero no se pudo escribir en la planilla (" + e.message + ").", true);
+  }
+}
+function avisoSeg(txt, malo) {
+  const el = document.getElementById("aviso-seg");
+  if (!el) return;
+  el.textContent = txt;
+  el.style.color = malo ? "var(--red)" : "var(--green)";
+  clearTimeout(window.__avisoSeg);
+  window.__avisoSeg = setTimeout(() => { el.textContent = ""; }, 6000);
 }
 
 const PALETA = ["#f07d20", "#2f9e5f", "#3182ce", "#805ad5", "#d64545", "#d69e2e", "#319795", "#dd6b20", "#5a67d8", "#718096"];
