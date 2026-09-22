@@ -91,6 +91,15 @@ td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 11.5px
 th.col-nombre, td.col-nombre { overflow: hidden; }
 td.col-nombre .txt { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 th.w-monto { width: 104px; } th.w-cant { width: 78px; } th.w-fact { width: 74px; } th.w-pct { width: 56px; }
+/* Seguimiento: cada celda lleva su dato principal y un renglón chico debajo, en
+   vez de una columna más. Así la tabla entra entera y no hay que correrse al costado. */
+td .sub { display: block; font-size: 9.8px; line-height: 1.4; font-weight: 400; color: var(--muted);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+td .sub.neg { color: var(--red); font-weight: 700; }
+td .sub.pos { color: var(--green); font-weight: 700; }
+#t-seg th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#t-seg td { vertical-align: top; padding-top: 7px; padding-bottom: 7px; }
+.btn-mini { padding: 3px 7px; font-size: 10.5px; white-space: nowrap; line-height: 1.5; }
 th.idx, td.idx { width: 30px; }
 tbody tr:nth-child(even) { background: var(--row-alt); }
 tbody tr.total-row { background: var(--brand-soft); font-weight: 800; }
@@ -166,6 +175,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   .kpi .k-val { font-size: 17px; }
   .card { overflow-x: auto; }          /* en celular la tabla se desliza dentro de la tarjeta */
   .card table { min-width: 430px; }
+  .card #t-seg { min-width: 900px; }
   .tbl-scroll { overflow-x: auto; }
 }
 </style>
@@ -1449,8 +1459,10 @@ function renderSeguimiento() {
       'cuántos servicios trae («Creatina 250gr <b>50 serv</b>» = 50 días) y se avisa ' + DIAS_ANTES_DE_QUE_ACABE +
       ' días antes de que se le acabe. Se toma lo primero que se le termina de su última compra. ' +
       'Tocá las tarjetas de arriba para filtrar. El filtro de mes no se aplica acá: el seguimiento necesita todo el historial. ' +
-      'Para marcar que ya se lo contactó, poné la fecha en una columna <b>CONTACTADO</b> de la planilla de seguimiento: ' +
-      'el aviso se apaga y vuelve a aparecer ' + DIAS_RECONTACTO + ' días después si no compró. ' +
+      'Para marcar que ya se lo contactó, usá el botón <b>✅ Contacté</b> de cada fila (o poné la fecha en una columna ' +
+      '<b>CONTACTADO</b> de la planilla de seguimiento): el aviso se apaga y vuelve a aparecer ' + DIAS_RECONTACTO +
+      ' días después si no compró. Cómo salió y por qué quedan en la columna <b>Contacto y resultado</b> y en ' +
+      '<b>Historial de contactos</b>, más abajo. ' +
       'Un aviso vencido hace más de ' + DIAS_VENTANA_CONTACTO + ' días pasa a «Para reactivar».' +
       (SHEET_SEGUIMIENTO_URL
         ? ' <b>Disciplina, lugar, alumno/coach y convenio</b> salen de la planilla de seguimiento: ' +
@@ -1470,47 +1482,58 @@ function renderSeguimiento() {
     '<div class="card"><h3>Clientes a seguir <small>' + visible.length + ' de ' + lista.length +
       '<button class="btn btn-sec" style="padding:3px 8px;font-size:10.5px;margin-left:8px" onclick="exportarSeguimiento()">⬇ Excel</button></small></h3>' +
       '<div class="tbl-scroll" style="max-height:560px"><table id="t-seg"></table></div></div>' +
+    '<div class="card"><h3>Historial de contactos <small id="sub-hist"></small></h3>' +
+      '<div class="tbl-scroll" style="max-height:420px"><table id="t-hist"></table></div></div>' +
     '<div class="card"><h3>Detalle de compras <small>una fila por producto, como la planilla</small></h3>' +
       '<div class="tbl-scroll" style="max-height:480px"><table id="t-seg-det"></table></div></div>';
+
+  renderHistorial();
 
   // ---- tabla de clientes ----
   const el = document.getElementById("t-seg");
   if (!visible.length) {
     el.innerHTML = '<tbody><tr><td class="empty">Ningún cliente en este estado. 🎉</td></tr></tbody>';
   } else {
-    let h = "<thead><tr><th style='width:34px'></th><th class='col-nombre'>Cliente</th>" +
-      "<th class='col-nombre'>Lugar de entrenamiento</th><th class='col-nombre'>Disciplina</th>" +
-      "<th style='width:78px'>Alumno/Coach</th><th style='width:90px'>Última compra</th>" +
-      "<th class='num' style='width:70px'>Días</th><th class='col-nombre'>Se le acaba primero</th>" +
-      "<th style='width:96px'>Contactar</th><th style='width:112px'>Ya contactado</th>" +
-      "<th style='width:96px'></th><th class='num' style='width:74px'>Compras</th>" +
-      "<th class='num w-monto'>Total comprado</th></tr></thead><tbody>";
+    let h = "<thead><tr><th style='width:30px'></th><th class='col-nombre'>Cliente</th>" +
+      "<th style='width:126px'>Última compra</th>" +
+      "<th class='col-nombre' title='El producto de su última compra que primero se le termina'>Se le acaba primero</th>" +
+      "<th style='width:128px'>Contactar</th>" +
+      "<th class='col-nombre' title='Cuándo se lo contactó, cómo salió y por qué'>Contacto y resultado</th>" +
+      "<th class='num' style='width:134px'>Total comprado</th>" +
+      "<th style='width:92px'></th></tr></thead><tbody>";
     visible.forEach(x => {
       const semaforo = x.estado === "contactado" ? "✅"
         : x.estado === "reactivar" ? "😴"
           : x.estado === "vencido" ? "🔴" : (x.estado === "semana" ? "🟡" : "🟢");
-      const cuando = x.atraso > 0 ? x.proximo.toLocaleDateString("es-PY") + " (hace " + x.atraso + "d)"
-                                  : x.proximo.toLocaleDateString("es-PY");
+      // Lo de la planilla (lugar, disciplina, alumno/coach, convenio) va como renglón
+      // chico debajo del nombre en vez de cuatro columnas más.
+      const ficha = [x.lugarFinal, x.disciplina, x.rol, x.convenio].filter(Boolean).join(" · ");
+      const atrasado = x.atraso > 0 && x.estado !== "contactado";
+      const cuando = x.atraso > 0 ? "vencido hace " + x.atraso + " d"
+        : x.atraso === 0 ? "es hoy" : "en " + (-x.atraso) + " días";
       h += "<tr class='clickable' onclick=\"filtrarPorCliente('" + esc(x.cliente).replace(/'/g, "\\'") + "')\" " +
         "title='Ver todo lo de este cliente'>" +
         "<td>" + semaforo + "</td>" +
-        "<td class='col-nombre' title='" + esc(x.cliente) + "'><span class='txt'>" + esc(x.cliente) + "</span></td>" +
-        "<td class='col-nombre' title='" + esc(x.lugarFinal) + "'><span class='txt'>" + esc(x.lugarFinal || "—") + "</span></td>" +
-        "<td class='col-nombre' title='" + esc(x.disciplina) + "'><span class='txt'>" + esc(x.disciplina || "—") + "</span></td>" +
-        "<td>" + esc(x.rol || "—") + "</td>" +
-        "<td>" + x.ultima.toLocaleDateString("es-PY") + "</td>" +
-        "<td class='num" + (x.dormido ? " neg" : "") + "'>" + x.sinComprar + "</td>" +
-        "<td class='col-nombre' title='" + esc(x.motivo) + "'><span class='txt'>" + esc(x.motivo) + "</span></td>" +
-        "<td class='" + (x.atraso > 0 && x.estado !== "contactado" ? "neg" : "") + "'>" + cuando + "</td>" +
-        "<td class='" + (x.contactado ? "pos" : "") + "' title='" + esc(x.nota) + "'>" +
-          (x.contactado ? x.contactado.toLocaleDateString("es-PY") +
-            (x.resultado ? "<div style='font-size:10px;color:var(--muted)'>" + esc(x.resultado) + "</div>" : "")
-            : "—") + "</td>" +
-        "<td><button class='btn btn-sec' style='padding:3px 8px;font-size:10.5px' " +
+        "<td class='col-nombre' title='" + esc(x.cliente + (ficha ? " — " + ficha : "")) + "'>" +
+          "<span class='txt'>" + esc(x.cliente) + "</span>" +
+          "<span class='sub'>" + esc(ficha || "sin datos de la planilla") + "</span></td>" +
+        "<td>" + x.ultima.toLocaleDateString("es-PY") +
+          "<span class='sub" + (x.dormido ? " neg" : "") + "'>hace " + x.sinComprar + " días</span></td>" +
+        "<td class='col-nombre' title='" + esc(x.motivo) + "'><span class='txt'>" + esc(x.motivo || "—") + "</span>" +
+          "<span class='sub'>" + x.nCompras + (x.nCompras === 1 ? " compra" : " compras") + "</span></td>" +
+        "<td class='" + (atrasado ? "neg" : "") + "'>" + x.proximo.toLocaleDateString("es-PY") +
+          "<span class='sub" + (atrasado ? " neg" : "") + "'>" + cuando + "</span></td>" +
+        "<td class='col-nombre' title='" + esc((x.contactado ? "Contactado el " + x.contactado.toLocaleDateString("es-PY") : "Todavía sin contactar") +
+            (x.resultado ? " — " + x.resultado : "") + (x.nota ? " — " + x.nota : "")) + "'>" +
+          "<span class='txt'>" + (x.contactado
+            ? "<b class='pos'>" + x.contactado.toLocaleDateString("es-PY") + "</b> " +
+              (x.resultado ? etiquetaResultado(x.resultado, true) : "")
+            : "<span style='color:var(--muted)'>sin contactar</span>") + "</span>" +
+          "<span class='sub'>" + esc(x.nota || (x.contactado ? "sin motivo anotado" : "")) + "</span></td>" +
+        "<td class='num'>" + num(x.total) + "</td>" +
+        "<td><button class='btn btn-sec btn-mini' title='Registrar o corregir el contacto' " +
           "onclick=\"event.stopPropagation();abrirContacto('" + esc(x.cliente).replace(/'/g, "\\'") + "')\">" +
-          (x.contactado ? "Actualizar" : "✅ Contacté") + "</button></td>" +
-        "<td class='num'>" + x.nCompras + "</td>" +
-        "<td class='num'>" + num(x.total) + "</td></tr>";
+          (x.contactado ? "✏️ Editar" : "✅ Contacté") + "</button></td></tr>";
     });
     h += "</tbody>";
     el.innerHTML = h;
@@ -1549,6 +1572,44 @@ function renderSeguimiento() {
     h += "</tbody>";
     elDet.innerHTML = h;
   }
+}
+
+/** Colorcito por resultado, para que se lea de un vistazo. */
+function etiquetaResultado(r, chico) {
+  const t = norm(r);
+  const color = t.includes("NO COMPR") ? "var(--red)"
+    : t.includes("COMPR") ? "var(--green)"
+      : "var(--muted)";
+  const icono = t.includes("NO COMPR") ? "🙁" : t.includes("COMPR") ? "🛒" : "📵";
+  return "<span style='color:" + color + ";font-weight:700" + (chico ? ";font-size:10.5px" : "") +
+    "'>" + icono + " " + esc(r) + "</span>";
+}
+
+/** Todo lo que se fue registrando: quién, cuándo, cómo salió y por qué. */
+function renderHistorial() {
+  const el = document.getElementById("t-hist");
+  const sub = document.getElementById("sub-hist");
+  if (!el) return;
+  const hist = CONTACTOS_LISTA.slice().sort((a, b) => b.fecha - a.fecha);
+  if (!hist.length) {
+    el.innerHTML = '<tbody><tr><td class="empty">Todavía no se registró ningún contacto. ' +
+      'Usá el botón «✅ Contacté» de la tabla de arriba.</td></tr></tbody>';
+    if (sub) sub.textContent = "";
+    return;
+  }
+  if (sub) sub.textContent = hist.length + (hist.length === 1 ? " contacto registrado" : " contactos registrados");
+  let h = "<thead><tr><th style='width:88px'>Fecha</th><th class='col-nombre'>Cliente</th>" +
+    "<th style='width:120px'>Resultado</th><th class='col-nombre'>Motivo / nota</th>" +
+    "<th class='col-nombre'>Vendedor</th></tr></thead><tbody>";
+  hist.slice(0, 300).forEach(c => {
+    h += "<tr><td>" + c.fecha.toLocaleDateString("es-PY") + "</td>" +
+      "<td class='col-nombre' title='" + esc(c.cliente) + "'><span class='txt'>" + esc(c.cliente) + "</span></td>" +
+      "<td>" + etiquetaResultado(c.resultado || "Contactado") + "</td>" +
+      "<td class='col-nombre' title='" + esc(c.nota) + "'><span class='txt'>" + esc(c.nota || "—") + "</span></td>" +
+      "<td class='col-nombre'><span class='txt'>" + esc(c.vendedor || "—") + "</span></td></tr>";
+  });
+  h += "</tbody>";
+  el.innerHTML = h;
 }
 
 function filtrarPorCliente(nombre) {
@@ -1677,26 +1738,34 @@ async function cargarFichasClientes() {
 // ------------------------- registro de contactos -------------------------
 // Los contactos viven en la planilla (pestaña CONTACTOS) y además se guardan en
 // este navegador, para que el tilde se vea al instante sin esperar al servidor.
-let CONTACTOS = {};        // clave de cliente ➜ { fecha, resultado, nota }
+let CONTACTOS = {};        // clave de cliente ➜ el último contacto
+let CONTACTOS_LISTA = [];  // todos, para el historial
 
 function claveContacto(nombre) { return "n:" + norm(partirCliente(nombre).base); }
 function guardarLocal() {
   try { localStorage.setItem("vitalica_contactos", JSON.stringify(
-    Object.keys(CONTACTOS).reduce((a, k) => { a[k] = { ...CONTACTOS[k], fecha: ymd(CONTACTOS[k].fecha) }; return a; }, {})
+    Object.keys(CONTACTOS).reduce((a, k) => {
+      a[k] = { ...CONTACTOS[k], fecha: ymd(CONTACTOS[k].fecha) }; return a;
+    }, {})
   )); } catch (e) { /* sin localStorage se sigue igual */ }
 }
 function leerLocal() {
   try {
     const raw = JSON.parse(localStorage.getItem("vitalica_contactos") || "{}");
     Object.keys(raw).forEach(k => {
-      const f = aFecha(raw[k].fecha);
-      if (f && (!CONTACTOS[k] || f > CONTACTOS[k].fecha)) CONTACTOS[k] = { ...raw[k], fecha: f };
+      const f = aFecha(raw[k].fecha); if (!f) return;
+      const item = { ...raw[k], fecha: f };
+      if (!CONTACTOS[k] || f > CONTACTOS[k].fecha) CONTACTOS[k] = item;
+      // Si el servidor todavía no lo devolvió (recién registrado), va igual al historial.
+      if (!CONTACTOS_LISTA.some(c => claveContacto(c.cliente) === k && ymd(c.fecha) === ymd(f))) {
+        CONTACTOS_LISTA.push(item);
+      }
     });
   } catch (e) { /* idem */ }
 }
 
 async function cargarContactos() {
-  CONTACTOS = {};
+  CONTACTOS = {}; CONTACTOS_LISTA = [];
   if (CONTACTOS_WEBAPP_URL) {
     try {
       const res = await fetch(CONTACTOS_WEBAPP_URL + "?cb=" + Date.now());
@@ -1704,7 +1773,9 @@ async function cargarContactos() {
       (d.contactos || []).forEach(c => {
         const f = aFecha(c.fecha); if (!f) return;
         const k = claveContacto(c.cliente);
-        if (!CONTACTOS[k] || f > CONTACTOS[k].fecha) CONTACTOS[k] = { fecha: f, resultado: c.resultado, nota: c.nota };
+        const item = { fecha: f, cliente: c.cliente, resultado: c.resultado, nota: c.nota, vendedor: c.vendedor || "" };
+        CONTACTOS_LISTA.push(item);
+        if (!CONTACTOS[k] || f > CONTACTOS[k].fecha) CONTACTOS[k] = item;
       });
     } catch (e) { console.warn("No se pudieron leer los contactos:", e.message); }
   }
@@ -1735,7 +1806,11 @@ async function registrarContacto(resultado) {
     return r ? cedulaDe(r.clienteCompleto) : "";
   })();
 
-  CONTACTOS[claveContacto(cliente)] = { fecha, resultado, nota };
+  const item = { fecha, cliente, resultado, nota, vendedor };
+  CONTACTOS[claveContacto(cliente)] = item;
+  CONTACTOS_LISTA = CONTACTOS_LISTA.filter(c =>
+    !(claveContacto(c.cliente) === claveContacto(cliente) && ymd(c.fecha) === ymd(fecha)));
+  CONTACTOS_LISTA.push(item);
   guardarLocal();
   cerrarContacto();
   renderSeguimiento();
