@@ -172,6 +172,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
        onerror="if(!this.dataset.r){this.dataset.r=1;this.src='LOGO_VITALICA.png';}else{this.style.display='none';}">
   <h2 onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)">Vitálica · BI</h2>
   <div id="menu-canales"></div>
+  <div class="menu-item" data-page="__seguimiento" onclick="irA('__seguimiento', this)">📞 Seguimiento</div>
   <div class="menu-item" data-page="__objetivos" onclick="irA('__objetivos', this)">🎯 Objetivos</div>
   <div class="menu-item" data-page="__nc" onclick="irA('__nc', this)">↩️ Notas de Crédito</div>
   <div class="side-note">
@@ -247,6 +248,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
       <div class="tbl-scroll" style="max-height:520px"><table id="t-docs"></table></div></div>
   </div>
 
+  <div id="vista-seguimiento" class="hide"></div>
   <div id="vista-objetivos" class="hide"></div>
   <div id="vista-nc" class="hide"></div>
 </main>
@@ -292,14 +294,26 @@ const ALIAS_CLIENTE = [
   { match: "VIGOR",  cliente: "VIGOR SA" }
 ];
 
+// ====================== SEGUIMIENTO DE CLIENTES ======================
+// El canal sobre el que el vendedor hace seguimiento (los mayoristas no entran).
+const CANAL_SEGUIMIENTO = "Consumidor Final";
+// Cuándo volver a escribirle: se lee la duración del producto de su propio
+// nombre ("Creatina Polvo OLIMP 250gr 50 serv" ➜ 50 servicios ➜ 50 días) y se
+// contacta unos días ANTES de que se le acabe.
+const DIAS_ANTES_DE_QUE_ACABE = 5;
+// Si el producto no dice cuántos servicios trae, se usa este plazo.
+const DIAS_CONTACTO_POR_DEFECTO = 45;
+// Un cliente está "dormido" si hace más de estos días que no compra.
+const DIAS_CLIENTE_DORMIDO = 90;
+// =====================================================================
+
 const CANAL_POR_CLIENTE = [
   { match: "BAMBU",    canal: "Gimnasios y Muestrarios" },
   { match: "BAMBÚ",    canal: "Gimnasios y Muestrarios" },
   { match: "GARAGE",   canal: "Gimnasios y Muestrarios" },
   { match: "EL NEGRO", canal: "Mayorista" },
   // Venturio es cuenta mayorista, pero tiene documentos (sobre todo notas de
-  // crédito) cargados con el equipo "Consumidor final", lo que distorsionaba la
-  // venta neta de los dos canales.
+  // crédito) cargados con el equipo "Consumidor final".
   { match: "VENTURIO", canal: "Mayorista" }
 ];
 const ICONO_CANAL = {
@@ -506,7 +520,10 @@ function partirCliente(nombre) {
   // cédula de un contacto ("5039341"), que Odoo deja pegados al nombre.
   const m = txt.match(/-\s*(\d{4,}(?:-[\dkK])?)\s*$/);
   const ruc = m ? m[1] : "";
-  const sinRuc = (m ? txt.slice(0, m.index) : txt).replace(/[,\-\s]+$/, "").trim();
+  let sinRuc = (m ? txt.slice(0, m.index) : txt).replace(/[,\-\s]+$/, "").trim();
+  // La cédula también viene pegada con dos puntos ("MANUEL GIRETT :5148613-0"):
+  // se saca para que el nombre quede limpio en las tablas.
+  sinRuc = sinRuc.replace(/\s*:\s*\d{4,}(-[\dkK])?\s*$/, "").trim() || sinRuc;
   const coma = sinRuc.indexOf(",");
   return {
     ruc: ruc,
@@ -659,6 +676,7 @@ function normalizarData(filas) {
       // El producto viene como "[5901330026461] Creatina Polvo OLIMP...": se saca el código.
       producto: String(r[20] || "").replace(/^\[[^\]]*\]\s*/, "").trim() || "Varios",
       cantidad: aNumero(r[24]),
+      descuento: aNumero(r[22]),        // % de descuento: es lo más cerca del "convenio"
       monto: aNumero(r[30])
     });
   }
@@ -842,20 +860,24 @@ function aplicarInterno() {
   leerFiltrosDeUI();
   const datos = filtrar();
 
-  const esObjetivos = PAGINA === "__objetivos", esNC = PAGINA === "__nc";
-  document.getElementById("vista-datos").classList.toggle("hide", esObjetivos || esNC);
+  const esObjetivos = PAGINA === "__objetivos", esNC = PAGINA === "__nc",
+        esSeg = PAGINA === "__seguimiento";
+  document.getElementById("vista-datos").classList.toggle("hide", esObjetivos || esNC || esSeg);
   document.getElementById("vista-objetivos").classList.toggle("hide", !esObjetivos);
   document.getElementById("vista-nc").classList.toggle("hide", !esNC);
+  document.getElementById("vista-seguimiento").classList.toggle("hide", !esSeg);
 
   const nombrePagina = PAGINA === "__resumen" ? "Resumen Principal"
     : PAGINA === "__objetivos" ? "Objetivos y Avance"
-      : PAGINA === "__nc" ? "Notas de Crédito" : PAGINA;
+      : PAGINA === "__nc" ? "Notas de Crédito"
+        : PAGINA === "__seguimiento" ? "Seguimiento de Clientes" : PAGINA;
   document.getElementById("txt-pagina").textContent = nombrePagina;
   document.getElementById("txt-pagina-sub").textContent =
     (filtros.mes ? MESES[+filtros.mes] + " " : "Año ") + filtros.anio +
     " · " + num(datos.length) + " líneas de factura";
 
   renderChips();
+  if (esSeg) return renderSeguimiento();
   if (esObjetivos) return renderObjetivos(datos);
   if (esNC) return renderNC(datos);
   renderDatos(datos);
@@ -1204,6 +1226,202 @@ function renderDocumentos(datos) {
   h += "<tr class='total-row'><td colspan='6'>Total (" + docs.length + " documentos)</td><td class='num'>" +
     num(total) + "</td></tr></tbody>";
   el.innerHTML = h;
+}
+
+// ======================= SEGUIMIENTO DE CLIENTES =======================
+// Para el vendedor: a quién le toca escribirle, cuándo y por qué producto.
+// Solo consumidor final; los mayoristas no entran.
+// ======================================================================
+
+/** Días que dura un producto, leídos de su propio nombre ("... 50 serv"). */
+function duracionProducto(nombre) {
+  const m = String(nombre || "").match(/(\d{1,3})\s*serv/i);
+  const servicios = m ? parseInt(m[1], 10) : 0;
+  if (!servicios) return DIAS_CONTACTO_POR_DEFECTO;
+  return Math.max(7, servicios - DIAS_ANTES_DE_QUE_ACABE);
+}
+function sumarDias(fecha, dias) {
+  const d = new Date(fecha.getTime());
+  d.setDate(d.getDate() + dias);
+  return d;
+}
+const HOY_SEG = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+function diasEntre(a, b) { return Math.round((b - a) / 86400000); }
+
+/** Compras de consumidor final, respetando los filtros salvo el de mes. */
+function filasSeguimiento() {
+  const cli = norm(filtros.cliente);
+  return FILAS.filter(r => {
+    if (r.esNC || r.esRemision) return false;              // solo compras reales
+    if (r.canal !== CANAL_SEGUIMIENTO) return false;
+    if (filtros.anio && String(r.anio) !== String(filtros.anio)) return false;
+    if (filtros.vendedores.length && !filtros.vendedores.includes(r.vendedor)) return false;
+    if (filtros.categorias.length && !filtros.categorias.includes(r.categoria)) return false;
+    if (filtros.productos.length && !filtros.productos.includes(r.producto)) return false;
+    if (cli && !norm(r.clienteCompleto).includes(cli) && !norm(r.cliente).includes(cli)) return false;
+    return true;
+  });
+}
+
+let filtroSeg = "";   // "" | vencidos | semana | dormidos
+function verSeguimiento(estado) { filtroSeg = estado; renderSeguimiento(); }
+
+function renderSeguimiento() {
+  const cont = document.getElementById("vista-seguimiento");
+  const filas = filasSeguimiento();
+  const hoy = HOY_SEG();
+
+  if (!filas.length) {
+    cont.innerHTML = '<div class="card"><div class="empty">No hay compras de ' +
+      esc(CANAL_SEGUIMIENTO) + ' con estos filtros.</div></div>';
+    return;
+  }
+
+  // Una ficha por cliente, con su última compra y cuándo vuelve a necesitar.
+  const fichas = {};
+  filas.forEach(r => {
+    const k = r.cliente;
+    if (!fichas[k]) fichas[k] = {
+      cliente: k, lugar: r.sucursal || "", compras: {}, total: 0,
+      ultima: null, productosUltima: [], montoUltima: 0, descuento: 0
+    };
+    const f = fichas[k];
+    f.total += r.monto;
+    f.compras[r.facturaId] = true;
+    if (r.sucursal && !f.lugar) f.lugar = r.sucursal;
+    if (!f.ultima || r.fecha > f.ultima) {
+      f.ultima = r.fecha; f.productosUltima = []; f.montoUltima = 0; f.descuento = r.descuento;
+    }
+    if (f.ultima && r.ymd === ymd(f.ultima)) {
+      f.productosUltima.push({ producto: r.producto, monto: r.monto, dias: duracionProducto(r.producto) });
+      f.montoUltima += r.monto;
+    }
+  });
+
+  const lista = Object.values(fichas).map(f => {
+    // Se contacta cuando se le acaba lo PRIMERO que compró.
+    const menor = f.productosUltima.reduce((a, p) => (!a || p.dias < a.dias) ? p : a, null);
+    const dias = menor ? menor.dias : DIAS_CONTACTO_POR_DEFECTO;
+    const proximo = sumarDias(f.ultima, dias);
+    const atraso = diasEntre(proximo, hoy);          // >0 = vencido
+    const sinComprar = diasEntre(f.ultima, hoy);
+    return {
+      ...f, proximo, atraso, sinComprar,
+      motivo: menor ? menor.producto : "",
+      nCompras: Object.keys(f.compras).length,
+      dormido: sinComprar > DIAS_CLIENTE_DORMIDO,
+      estado: atraso > 0 ? "vencido" : (atraso >= -7 ? "semana" : "aldia")
+    };
+  }).sort((a, b) => a.proximo - b.proximo);
+
+  const vencidos = lista.filter(x => x.estado === "vencido");
+  const semana = lista.filter(x => x.estado === "semana");
+  const dormidos = lista.filter(x => x.dormido);
+
+  const visible = filtroSeg === "vencidos" ? vencidos
+    : filtroSeg === "semana" ? semana
+      : filtroSeg === "dormidos" ? dormidos : lista;
+
+  const tarjeta = (id, lbl, val, sub, activo) =>
+    '<div class="kpi" style="cursor:pointer' + (activo ? ';border-top-color:#2f9e5f' : '') +
+    '" onclick="verSeguimiento(\'' + id + '\')"><div class="k-lbl">' + lbl + '</div><div class="k-val">' +
+    val + '</div><div class="k-sub">' + sub + '</div></div>';
+
+  cont.innerHTML =
+    '<div class="kpi-row">' +
+      tarjeta("vencidos", "🔴 Para contactar ya", num(vencidos.length), "se les pasó la fecha", filtroSeg === "vencidos") +
+      tarjeta("semana", "🟡 Esta semana", num(semana.length), "en los próximos 7 días", filtroSeg === "semana") +
+      tarjeta("dormidos", "😴 Dormidos", num(dormidos.length), "sin comprar hace +" + DIAS_CLIENTE_DORMIDO + " días", filtroSeg === "dormidos") +
+      tarjeta("", "👥 Todos", num(lista.length), "clientes de " + esc(CANAL_SEGUIMIENTO), filtroSeg === "") +
+    '</div>' +
+    '<div class="note">La fecha de <b>próximo contacto</b> sale de la duración del producto: el nombre dice ' +
+      'cuántos servicios trae («Creatina 250gr <b>50 serv</b>» = 50 días) y se avisa ' + DIAS_ANTES_DE_QUE_ACABE +
+      ' días antes de que se le acabe. Se toma lo primero que se le termina de su última compra. ' +
+      'Tocá las tarjetas de arriba para filtrar. El filtro de mes no se aplica acá: el seguimiento necesita todo el historial.</div>' +
+    '<div class="card"><h3>Clientes a seguir <small>' + visible.length + ' de ' + lista.length +
+      '<button class="btn btn-sec" style="padding:3px 8px;font-size:10.5px;margin-left:8px" onclick="exportarSeguimiento()">⬇ Excel</button></small></h3>' +
+      '<div class="tbl-scroll" style="max-height:560px"><table id="t-seg"></table></div></div>' +
+    '<div class="card"><h3>Detalle de compras <small>una fila por producto, como la planilla</small></h3>' +
+      '<div class="tbl-scroll" style="max-height:480px"><table id="t-seg-det"></table></div></div>';
+
+  // ---- tabla de clientes ----
+  const el = document.getElementById("t-seg");
+  if (!visible.length) {
+    el.innerHTML = '<tbody><tr><td class="empty">Ningún cliente en este estado. 🎉</td></tr></tbody>';
+  } else {
+    let h = "<thead><tr><th style='width:34px'></th><th class='col-nombre'>Cliente</th>" +
+      "<th class='col-nombre'>Lugar de entrenamiento</th><th style='width:90px'>Última compra</th>" +
+      "<th class='num' style='width:70px'>Días</th><th class='col-nombre'>Se le acaba primero</th>" +
+      "<th style='width:96px'>Contactar</th><th class='num' style='width:74px'>Compras</th>" +
+      "<th class='num w-monto'>Total comprado</th></tr></thead><tbody>";
+    visible.forEach(x => {
+      const semaforo = x.estado === "vencido" ? "🔴" : (x.estado === "semana" ? "🟡" : "🟢");
+      const cuando = x.atraso > 0 ? x.proximo.toLocaleDateString("es-PY") + " (hace " + x.atraso + "d)"
+                                  : x.proximo.toLocaleDateString("es-PY");
+      h += "<tr class='clickable' onclick=\"filtrarPorCliente('" + esc(x.cliente).replace(/'/g, "\\'") + "')\" " +
+        "title='Ver todo lo de este cliente'>" +
+        "<td>" + semaforo + "</td>" +
+        "<td class='col-nombre' title='" + esc(x.cliente) + "'><span class='txt'>" + esc(x.cliente) + "</span></td>" +
+        "<td class='col-nombre' title='" + esc(x.lugar) + "'><span class='txt'>" + esc(x.lugar || "—") + "</span></td>" +
+        "<td>" + x.ultima.toLocaleDateString("es-PY") + "</td>" +
+        "<td class='num" + (x.dormido ? " neg" : "") + "'>" + x.sinComprar + "</td>" +
+        "<td class='col-nombre' title='" + esc(x.motivo) + "'><span class='txt'>" + esc(x.motivo) + "</span></td>" +
+        "<td class='" + (x.atraso > 0 ? "neg" : "") + "'>" + cuando + "</td>" +
+        "<td class='num'>" + x.nCompras + "</td>" +
+        "<td class='num'>" + num(x.total) + "</td></tr>";
+    });
+    h += "</tbody>";
+    el.innerHTML = h;
+  }
+
+  // ---- detalle por producto, con el formato de la planilla ----
+  const nombresVisibles = new Set(visible.map(x => x.cliente));
+  const det = filas.filter(r => nombresVisibles.has(r.cliente))
+    .sort((a, b) => b.fecha - a.fecha).slice(0, 400);
+  const elDet = document.getElementById("t-seg-det");
+  if (!det.length) {
+    elDet.innerHTML = '<tbody><tr><td class="empty">Sin compras para mostrar</td></tr></tbody>';
+  } else {
+    let h = "<thead><tr><th style='width:88px'>Fecha compra</th><th style='width:50px'>Año</th>" +
+      "<th style='width:50px'>Mes</th><th class='col-nombre'>Nombre completo</th>" +
+      "<th class='col-nombre'>Producto solicitado</th><th class='num w-monto'>Monto</th>" +
+      "<th class='num' style='width:74px'>Dto.</th><th class='col-nombre'>Lugar de entrenamiento</th>" +
+      "<th style='width:92px'>Próximo contacto</th></tr></thead><tbody>";
+    det.forEach(r => {
+      const prox = sumarDias(r.fecha, duracionProducto(r.producto));
+      const vencido = prox < hoy;
+      h += "<tr><td>" + r.fecha.toLocaleDateString("es-PY") + "</td><td>" + r.anio + "</td><td>" + r.mes + "</td>" +
+        "<td class='col-nombre' title='" + esc(r.clienteCompleto) + "'><span class='txt'>" + esc(r.clienteCompleto) + "</span></td>" +
+        "<td class='col-nombre' title='" + esc(r.producto) + "'><span class='txt'>" + esc(r.producto) + "</span></td>" +
+        "<td class='num'>" + num(r.monto) + "</td>" +
+        "<td class='num'>" + (r.descuento ? r.descuento + "%" : "—") + "</td>" +
+        "<td class='col-nombre' title='" + esc(r.sucursal) + "'><span class='txt'>" + esc(r.sucursal || "—") + "</span></td>" +
+        "<td class='" + (vencido ? "neg" : "pos") + "'>" + prox.toLocaleDateString("es-PY") + "</td></tr>";
+    });
+    h += "</tbody>";
+    elDet.innerHTML = h;
+  }
+}
+
+function filtrarPorCliente(nombre) {
+  document.getElementById("f-cliente").value = nombre;
+  aplicar();
+}
+
+function exportarSeguimiento() {
+  if (typeof XLSX === "undefined") return alert("No se pudo cargar la librería de Excel (CDN).");
+  const filas = filasSeguimiento();
+  if (!filas.length) return alert("No hay datos para exportar.");
+  const hoja = XLSX.utils.json_to_sheet(filas.map(r => ({
+    "Fecha de compra": r.ymd, "Año": r.anio, "Mes": r.mes,
+    "Nombre completo": r.clienteCompleto, "Producto solicitado": r.producto,
+    "Monto compra": r.monto, "Descuento %": r.descuento,
+    "Lugar de entrenamiento": r.sucursal, "Vendedor": r.vendedor,
+    "Próximo contacto": ymd(sumarDias(r.fecha, duracionProducto(r.producto)))
+  })));
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, "Seguimiento");
+  XLSX.writeFile(libro, "Vitalica_Seguimiento.xlsx");
 }
 
 const PALETA = ["#f07d20", "#2f9e5f", "#3182ce", "#805ad5", "#d64545", "#d69e2e", "#319795", "#dd6b20", "#5a67d8", "#718096"];
