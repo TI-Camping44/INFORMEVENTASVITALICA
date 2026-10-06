@@ -79,6 +79,9 @@ select, input[type=date], input[type=text] { padding: 6px 8px; border: 1px solid
 .ms-panel label.sin-dato .ms-txt { color: var(--muted); }
 /* Los gráficos filtran al tocarlos. */
 .chart-box canvas { cursor: pointer; }
+/* Enlace compartido con los filtros fijos: se ve qué se está mirando, pero no se toca. */
+.topbar.fijos { opacity: .62; }
+.sidebar.fijos .menu-item:not(.active) { opacity: .35; pointer-events: none; }
 /* El título de la torta cambia según lo elegido: que no se parta en dos renglones. */
 .grid-charts .card h3 { gap: 8px; }
 .grid-charts .card h3 > span { white-space: nowrap; }
@@ -248,6 +251,8 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
     <div class="f-group"><label>&nbsp;</label><button class="btn btn-sec" onclick="limpiarFiltros()">Limpiar</button></div>
     <div class="f-group"><label>&nbsp;</label><button class="btn" onclick="iniciar()">🔄 Actualizar</button></div>
     <div class="f-group"><label>&nbsp;</label><button class="btn btn-sec" onclick="exportarExcel()">⬇ Excel</button></div>
+    <div class="f-group"><label>&nbsp;</label><button class="btn btn-sec" onclick="abrirCompartir()"
+      title="Copiar un enlace que abre el informe tal cual lo estás viendo">🔗 Compartir</button></div>
   </div>
 
   <div id="chips"></div>
@@ -300,6 +305,23 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   </div>
 
   <div id="vista-seguimiento" class="hide"></div>
+
+  <div id="dlg-compartir" class="dlg-fondo hide" onclick="if(event.target===this)cerrarCompartir()">
+    <div class="dlg" style="max-width:560px">
+      <h3 style="margin:0 0 4px">Compartir este informe</h3>
+      <div id="cmp-resumen" style="font-size:11.5px;color:var(--muted);margin-bottom:10px"></div>
+      <input type="text" id="cmp-url" readonly onclick="this.select()" style="width:100%;font-size:11px">
+      <label style="display:flex;gap:7px;align-items:flex-start;margin:11px 0;font-size:11.5px;cursor:pointer">
+        <input type="checkbox" id="cmp-fijo" onchange="refrescarLinkCompartir()" style="margin-top:2px">
+        <span><b>Dejar los filtros fijos.</b> Quien abra el enlace ve sólo este recorte y no puede
+        cambiarlo. Sirve para mandarle a un vendedor su propio panel.</span></label>
+      <div id="cmp-aviso" style="font-size:11.5px;font-weight:700;color:var(--green);min-height:16px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button class="btn btn-sec" onclick="cerrarCompartir()">Cerrar</button>
+        <button class="btn" onclick="copiarLinkCompartir()">📋 Copiar enlace</button>
+      </div>
+    </div>
+  </div>
 
   <div id="dlg-contacto" class="dlg-fondo hide" onclick="if(event.target===this)cerrarContacto()">
     <div class="dlg">
@@ -542,6 +564,7 @@ async function iniciar() {
 
     construirFiltros();
     construirMenu();
+    leerUrl();                       // un enlace compartido abre su mismo recorte
     document.getElementById("loader").classList.add("hide");
     document.getElementById("side-actualizado").textContent = "Datos al " + new Date().toLocaleString("es-PY");
   } catch (e) {
@@ -949,8 +972,11 @@ function construirFiltros() {
   filtros.anio = String(anios[0] || "");
   selA.value = filtros.anio;
 
+  // El mes que se está cursando se marca, igual que en el informe de Camping 44:
+  // de un vistazo se sabe cuál es el mes vivo y cuáles ya cerraron.
+  const hoyM = new Date(), mesVivo = (String(anios[0]) === String(hoyM.getFullYear())) ? hoyM.getMonth() + 1 : 0;
   document.getElementById("f-mes").innerHTML = '<option value="">-- Año completo (YTD) --</option>' +
-    MESES.map((m, i) => i ? '<option value="' + i + '">' + m + '</option>' : "").join("");
+    MESES.map((m, i) => i ? '<option value="' + i + '">' + m + (i === mesVivo ? " (actual)" : "") + '</option>' : "").join("");
 
   multiselect("ms-vendedor", "vendedor", "Vendedor");
   multiselect("ms-canal", "canal", "Canal");
@@ -967,6 +993,7 @@ function construirMenu() {
     '<div class="menu-item' + (it.id === PAGINA ? " active" : "") + '" data-page="' + esc(it.id) + '" onclick="irA(\'' + esc(it.id).replace(/'/g, "\\'") + '\', this)">' + esc(it.txt) + '</div>').join("");
 }
 function irA(pagina, el) {
+  if (FILTROS_FIJOS) return;
   PAGINA = pagina;
   document.querySelectorAll(".menu-item").forEach(m => m.classList.remove("active"));
   if (el) el.classList.add("active");
@@ -974,12 +1001,14 @@ function irA(pagina, el) {
 }
 // Tocar un mes en la tabla lo filtra (y volver a tocarlo lo saca).
 function filtrarMes(m) {
+  if (FILTROS_FIJOS) return;
   const sel = document.getElementById("f-mes");
   sel.value = (String(filtros.mes) === String(m)) ? "" : String(m);
   aplicar();
 }
 // Tocar un día en el gráfico lo deja solo (y volver a tocarlo lo saca).
 function elegirDia(fecha) {
+  if (FILTROS_FIJOS) return;
   const d = document.getElementById("f-desde"), h = document.getElementById("f-hasta");
   const puesto = (d.value === fecha && h.value === fecha);
   d.value = puesto ? "" : fecha;
@@ -1004,6 +1033,7 @@ document.addEventListener("keydown", e => {
 });
 
 function limpiarFiltros() {
+  if (FILTROS_FIJOS) return;
   filtros.mes = ""; filtros.cliente = ""; filtros.desde = ""; filtros.hasta = ""; filtros.doc = "factura";
   filtros.vendedores = []; filtros.canales = []; filtros.categorias = [];
   filtros.productos = []; filtros.clientes = [];
@@ -1024,14 +1054,105 @@ function limpiarFiltros() {
   aplicar();
 }
 
+// --------------------------------------------------- enlace compartible
+// Idea tomada del informe de Camping 44, donde se le puede pasar a cada vendedor
+// un enlace con su panel ya filtrado. Acá va un paso más: el enlace guarda TODOS
+// los filtros y la página, y opcionalmente los deja fijos para quien lo reciba.
+const PARAMS_URL = [
+  ["p", "pagina"], ["a", "anio"], ["m", "mes"], ["q", "cliente"], ["d", "doc"],
+  ["f1", "desde"], ["f2", "hasta"]
+];
+const PARAMS_MULTI = [["v", "vendedores"], ["c", "canales"], ["g", "categorias"],
+                      ["pr", "productos"], ["cl", "clientes"]];
+let FILTROS_FIJOS = false;
+
+function urlDelInforme(fijar) {
+  const u = new URL(window.location.href);
+  u.search = "";
+  leerFiltrosDeUI();
+  PARAMS_URL.forEach(([k, campo]) => {
+    const v = campo === "pagina" ? PAGINA : filtros[campo];
+    if (v) u.searchParams.set(k, v);
+  });
+  PARAMS_MULTI.forEach(([k, campo]) => (filtros[campo] || []).forEach(v => u.searchParams.append(k, v)));
+  if (fijar) u.searchParams.set("fijo", "1");
+  return u.toString();
+}
+
+/** Aplica lo que venga en la dirección. Devuelve true si había algo. */
+function leerUrl() {
+  const q = new URLSearchParams(window.location.search);
+  if (![...q.keys()].length) return false;
+  PARAMS_URL.forEach(([k, campo]) => {
+    if (!q.has(k)) return;
+    const v = q.get(k);
+    if (campo === "pagina") { PAGINA = v; return; }
+    filtros[campo] = v;
+    const el = document.getElementById("f-" + (campo === "cliente" ? "cliente" : campo));
+    if (el) el.value = v;
+  });
+  PARAMS_MULTI.forEach(([k, campo]) => { const v = q.getAll(k); if (v.length) filtros[campo] = v; });
+  sincronizarMultiselects();
+  document.querySelectorAll(".menu-item").forEach(m => m.classList.toggle("active", m.dataset.page === PAGINA));
+  if (q.get("fijo") === "1") fijarFiltros();
+  return true;
+}
+
+/** Modo "sólo mirar": el que recibe el enlace ve ese recorte y nada más. */
+function fijarFiltros() {
+  FILTROS_FIJOS = true;
+  document.querySelector(".topbar").classList.add("fijos");
+  document.querySelector(".sidebar").classList.add("fijos");
+  document.querySelectorAll(".topbar select, .topbar input, .topbar .ms-btn").forEach(e => {
+    if (e.tagName === "DIV") e.style.pointerEvents = "none"; else e.disabled = true;
+  });
+  document.getElementById("chips").insertAdjacentHTML("beforebegin",
+    '<div class="note" style="background:#eaf4ff;border-color:#b9d9f5">🔒 Vista compartida: los filtros ' +
+    'están fijos. <a href="' + window.location.pathname + '">Abrir el informe completo</a>.</div>');
+}
+
+function abrirCompartir() {
+  const dlg = document.getElementById("dlg-compartir");
+  document.getElementById("cmp-fijo").checked = false;
+  refrescarLinkCompartir();
+  dlg.classList.remove("hide");
+}
+function refrescarLinkCompartir() {
+  const fijar = document.getElementById("cmp-fijo").checked;
+  document.getElementById("cmp-url").value = urlDelInforme(fijar);
+  const resumen = [];
+  if (PAGINA !== "__resumen") resumen.push("página " + PAGINA.replace(/^__/, ""));
+  if (filtros.mes) resumen.push(MESES[+filtros.mes]);
+  if (filtros.desde || filtros.hasta) resumen.push("fechas " + (filtros.desde || "…") + " a " + (filtros.hasta || "…"));
+  PARAMS_MULTI.forEach(([, campo]) => (filtros[campo] || []).forEach(v => resumen.push(v)));
+  if (filtros.cliente) resumen.push('búsqueda "' + filtros.cliente + '"');
+  document.getElementById("cmp-resumen").textContent = resumen.length
+    ? "El enlace abre: " + resumen.join(" · ") : "El enlace abre el informe completo, sin filtros.";
+}
+function copiarLinkCompartir() {
+  const inp = document.getElementById("cmp-url");
+  inp.select();
+  const listo = () => { document.getElementById("cmp-aviso").textContent = "✔ Enlace copiado"; };
+  if (navigator.clipboard) navigator.clipboard.writeText(inp.value).then(listo, () => document.execCommand("copy") && listo());
+  else { document.execCommand("copy"); listo(); }
+}
+function cerrarCompartir() { document.getElementById("dlg-compartir").classList.add("hide"); }
+
 // ------------------------------------------------------------- filtrado
 function leerFiltrosDeUI() {
   filtros.anio = document.getElementById("f-anio").value;
-  filtros.mes = document.getElementById("f-mes").value;
   filtros.cliente = document.getElementById("f-cliente").value.trim();
   filtros.doc = document.getElementById("f-doc").value;
   filtros.desde = document.getElementById("f-desde").value;
   filtros.hasta = document.getElementById("f-hasta").value;
+  // Un rango de fechas y un mes a la vez se contradicen y el informe queda
+  // mostrando la intersección sin que se note. Manda el rango: el mes se apaga.
+  const selMes = document.getElementById("f-mes");
+  const hayRango = !!(filtros.desde || filtros.hasta);
+  // En una vista compartida y fijada, el candado manda sobre todo esto.
+  selMes.disabled = FILTROS_FIJOS || hayRango;
+  selMes.title = hayRango ? "Sacá el rango de fechas para volver a elegir un mes" : "";
+  filtros.mes = hayRango ? "" : selMes.value;
 }
 /**
  * `omitir` saltea uno de los filtros desplegables. Sirve para saber qué se
@@ -1125,6 +1246,7 @@ function ordenarTabla(idTabla, col) {
 
 // Aplica un filtro al tocar una fila (ej. tocar un vendedor filtra por ese vendedor).
 function filtrarPor(campo, valor) {
+  if (FILTROS_FIJOS) return;
   const mapa = { vendedor: "vendedores", canal: "canales", categoria: "categorias", producto: "productos", cliente: "clientes" };
   const destino = mapa[campo];
   if (!destino) return;
@@ -1134,6 +1256,7 @@ function filtrarPor(campo, valor) {
   aplicar();
 }
 function quitarFiltro(destino, valor) {
+  if (FILTROS_FIJOS) return;
   filtros[destino] = filtros[destino].filter(v => v !== valor);
   sincronizarMultiselects();
   aplicar();
@@ -1169,7 +1292,7 @@ function renderChips() {
     h += '<span class="chip">Fecha: <b>' + esc(r) + '</b><span class="x" title="Quitar" ' +
       'onclick="document.getElementById(\'f-desde\').value=\'\';document.getElementById(\'f-hasta\').value=\'\';aplicar();">×</span></span>';
   }
-  if (h) h += '<span class="chip chip-limpiar" onclick="limpiarFiltros()">limpiar todo</span>';
+  if (h && !FILTROS_FIJOS) h += '<span class="chip chip-limpiar" onclick="limpiarFiltros()">limpiar todo</span>';
   cont.innerHTML = h;
 }
 
@@ -1833,6 +1956,7 @@ function renderHistorial() {
 }
 
 function filtrarPorCliente(nombre) {
+  if (FILTROS_FIJOS) return;
   document.getElementById("f-cliente").value = nombre;
   aplicar();
 }
