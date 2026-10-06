@@ -60,6 +60,29 @@ select, input[type=date], input[type=text] { padding: 6px 8px; border: 1px solid
                   font-size: 11.5px; text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 400; }
 .ms-panel label:hover { background: var(--gray-chip); }
 .ms-all { border-bottom: 1px solid var(--border); margin-bottom: 4px; padding-bottom: 4px; font-weight: 700 !important; }
+/* Buscador dentro del desplegable: con cientos de productos, encontrar uno a ojo es imposible. */
+.ms-buscar { width: 100%; box-sizing: border-box; padding: 5px 7px; margin-bottom: 5px; border: 1px solid var(--border);
+             border-radius: 5px; font-size: 11.5px; font-family: inherit; }
+.ms-panel label .ms-txt { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-panel label .ms-monto { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Lo que no tiene ventas con el resto de los filtros no se ofrece. */
+.ms-panel label.oculta, .ms-panel label.nobusca { display: none; }
+.ms-cab { font-weight: 400; font-size: 10px; color: var(--muted); margin-left: auto; }
+.ms-vacio { color: var(--muted); font-style: italic; font-size: 11px; padding: 8px 6px; display: none; }
+.ms-panel.vacio .ms-vacio { display: block; }
+/* Lo escondido siempre se puede traer de vuelta: si no, elegir una categoría que
+   se vende en un solo canal dejaría el filtro de canal sin salida. */
+.ms-mas { display: none; margin-top: 4px; padding: 5px 6px; border-top: 1px solid var(--border);
+          font-size: 10.5px; color: var(--brand-dark); cursor: pointer; font-weight: 700; }
+.ms-mas:hover { background: var(--brand-soft); }
+.ms-mas.hay { display: block; }
+.ms-panel label.sin-dato .ms-txt { color: var(--muted); }
+/* Los gráficos filtran al tocarlos. */
+.chart-box canvas { cursor: pointer; }
+/* El título de la torta cambia según lo elegido: que no se parta en dos renglones. */
+.grid-charts .card h3 { gap: 8px; }
+.grid-charts .card h3 > span { white-space: nowrap; }
+.grid-charts .card h3 small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* KPIs */
 .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 12px; }
@@ -240,14 +263,17 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
       Lo <b>entregado sin facturar</b> (órdenes de venta confirmadas y entregadas que todavía no
       tienen factura: muestrarios y entregas pendientes de facturar) se cuenta aparte y se puede
       sumar con el filtro «Documento».
-      «Clientes activos» = clientes que compraron en los últimos <b id="nmeses-activo">3</b> meses.</div>
+      «Clientes activos» = clientes que compraron en los últimos <b id="nmeses-activo">3</b> meses.
+      <b>Todo filtra:</b> tocá una porción de los gráficos, una barra de la evolución o una fila de las
+      tablas y el informe entero se recalcula. Los desplegables sólo ofrecen lo que tiene ventas con los
+      filtros puestos, con el monto al lado, y traen buscador.</div>
 
     <div class="grid-charts">
       <div class="card"><h3>Evolución de Ventas <small id="sub-evolucion"></small></h3>
         <div class="chart-box" data-chart="ch-evolucion"><canvas id="ch-evolucion"></canvas></div></div>
-      <div class="card"><h3>Contribución por Canal</h3>
+      <div class="card"><h3><span id="tit-canal">Contribución por Canal</span> <small id="sub-canal"></small></h3>
         <div class="chart-box" data-chart="ch-canal"><canvas id="ch-canal"></canvas></div></div>
-      <div class="card"><h3>Contribución por Categoría</h3>
+      <div class="card"><h3><span id="tit-categoria">Contribución por Categoría</span> <small id="sub-categoria"></small></h3>
         <div class="chart-box" data-chart="ch-categoria"><canvas id="ch-categoria"></canvas></div></div>
     </div>
 
@@ -799,30 +825,120 @@ function multiselect(idCont, campo, etiqueta) {
   const cont = document.getElementById(idCont);
   const vals = opciones(campo);
   cont.innerHTML = '<div class="ms-btn" data-todos="-- Todos --">-- Todos --</div><div class="ms-panel">' +
-    '<label class="ms-all"><input type="checkbox" checked onchange="msTodos(\'' + idCont + '\', this)"> Todos</label>' +
-    vals.map(v => '<label><input type="checkbox" value="' + esc(v) + '" checked onchange="msCambio(\'' + idCont + '\')"> ' + esc(v) + '</label>').join("") +
+    '<input class="ms-buscar" type="text" placeholder="buscar ' + esc(etiqueta.toLowerCase()) + '..." ' +
+      'oninput="msBuscar(\'' + idCont + '\', this.value)" onclick="event.stopPropagation()">' +
+    '<label class="ms-all"><input type="checkbox" checked onchange="msTodos(\'' + idCont + '\', this)"> ' +
+      'Todos <span class="ms-cab"></span></label>' +
+    vals.map(v => '<label data-val="' + esc(v) + '"><input type="checkbox" value="' + esc(v) +
+      '" checked onchange="msCambio(\'' + idCont + '\')"> <span class="ms-txt">' + esc(v) +
+      '</span><span class="ms-monto"></span></label>').join("") +
+    '<div class="ms-vacio">Nada para elegir con los filtros de ahora.</div>' +
+    '<div class="ms-mas" onclick="msVacios(\'' + idCont + '\', event)"></div>' +
     '</div>';
   cont.querySelector(".ms-btn").onclick = e => { e.stopPropagation(); cont.classList.toggle("open"); };
   cont.dataset.campo = campo; cont.dataset.etiqueta = etiqueta;
 }
 function msTodos(id, chk) {
   const cont = document.getElementById(id);
-  cont.querySelectorAll('.ms-panel input[value]').forEach(c => c.checked = chk.checked);
+  // "Todos" sólo alcanza a lo que se está viendo: si hay una búsqueda escrita,
+  // marcar o desmarcar no toca lo que quedó fuera de la búsqueda.
+  cont.querySelectorAll('.ms-panel label[data-val]').forEach(lb => {
+    if (lb.classList.contains("nobusca")) return;
+    lb.querySelector("input").checked = chk.checked;
+  });
   msCambio(id);
+}
+/** Deja el botón del filtro diciendo qué se eligió, no sólo cuántos. */
+function etiquetaBoton(cont, sel, total) {
+  const btn = cont.querySelector(".ms-btn");
+  if (!sel.length || sel.length === total) { btn.textContent = "-- Todos --"; btn.title = "Todos"; return; }
+  btn.textContent = sel.length === 1 ? sel[0] : sel.length + " seleccionados";
+  btn.title = sel.join("\n");
+}
+/** Muestra u oculta las opciones que no tienen ventas con los filtros puestos. */
+function msVacios(id, ev) {
+  if (ev) ev.stopPropagation();
+  const cont = document.getElementById(id);
+  cont.dataset.vacios = cont.dataset.vacios === "1" ? "" : "1";
+  refrescarOpciones();
+}
+function msBuscar(id, texto) {
+  const cont = document.getElementById(id);
+  const q = norm(texto);
+  let visibles = 0;
+  cont.querySelectorAll('.ms-panel label[data-val]').forEach(lb => {
+    const fuera = !!q && !norm(lb.dataset.val).includes(q);
+    lb.classList.toggle("nobusca", fuera);
+    if (!fuera && !lb.classList.contains("oculta")) visibles++;
+  });
+  cont.querySelector(".ms-panel").classList.toggle("vacio", visibles === 0);
 }
 function msCambio(id) {
   const cont = document.getElementById(id);
   const cajas = [...cont.querySelectorAll('.ms-panel input[value]')];
   const sel = cajas.filter(c => c.checked).map(c => c.value);
   cont.querySelector(".ms-all input").checked = (sel.length === cajas.length);
-  const btn = cont.querySelector(".ms-btn");
-  btn.textContent = (sel.length === 0 || sel.length === cajas.length) ? "-- Todos --" : sel.length + " seleccionado" + (sel.length > 1 ? "s" : "");
+  etiquetaBoton(cont, sel, cajas.length);
   const arr = sel.length === cajas.length ? [] : sel;
   if (id === "ms-vendedor") filtros.vendedores = arr;
   else if (id === "ms-canal") filtros.canales = arr;
   else if (id === "ms-categoria") filtros.categorias = arr;
   else if (id === "ms-producto") filtros.productos = arr;
   aplicar();
+}
+
+// Los cuatro filtros desplegables, con el campo de FILAS y la clave en `filtros`.
+const MULTIS = [
+  ["ms-vendedor", "vendedor", "vendedores"], ["ms-canal", "canal", "canales"],
+  ["ms-categoria", "categoria", "categorias"], ["ms-producto", "producto", "productos"]
+];
+
+/** Monto corto para la lista de opciones: «290 M», «45 k». */
+function compacto(n) {
+  const a = Math.abs(n);
+  if (a >= 1e6) return num(Math.round(n / 1e6)) + " M";
+  if (a >= 1e3) return num(Math.round(n / 1e3)) + " k";
+  return num(Math.round(n));
+}
+
+/**
+ * Deja en cada desplegable sólo lo que de verdad se puede elegir.
+ *
+ * Para cada filtro se miran las ventas que pasan TODOS los otros filtros (y la
+ * página en la que se está). Lo que no aparece ahí no se ofrece, y lo que sí
+ * muestra al lado cuánto vendió. Un valor ya elegido nunca se esconde, porque
+ * si no, no habría forma de destildarlo.
+ */
+function refrescarOpciones() {
+  MULTIS.forEach(([id, campo, clave]) => {
+    const cont = document.getElementById(id); if (!cont) return;
+    const monto = {};
+    filtrar(false, clave).forEach(r => {
+      if (r.esNC) return;
+      const k = r[campo]; if (k) monto[k] = (monto[k] || 0) + r.monto;
+    });
+    const elegidos = filtros[clave] || [];
+    const verVacios = cont.dataset.vacios === "1";
+    let conDato = 0, total = 0, visibles = 0;
+    cont.querySelectorAll('.ms-panel label[data-val]').forEach(lb => {
+      const v = lb.dataset.val; total++;
+      const hay = Object.prototype.hasOwnProperty.call(monto, v);
+      if (hay) conDato++;
+      lb.classList.toggle("sin-dato", !hay);
+      lb.classList.toggle("oculta", !hay && !verVacios && !elegidos.includes(v));
+      lb.querySelector(".ms-monto").textContent = hay ? compacto(monto[v]) : "sin ventas";
+      if (!lb.classList.contains("oculta") && !lb.classList.contains("nobusca")) visibles++;
+    });
+    const cab = cont.querySelector(".ms-cab");
+    if (cab) cab.textContent = conDato < total ? conDato + " de " + total : total + "";
+    cont.querySelector(".ms-panel").classList.toggle("vacio", visibles === 0);
+    const mas = cont.querySelector(".ms-mas"), nVacios = total - conDato;
+    if (mas) {
+      mas.classList.toggle("hay", nVacios > 0);
+      mas.textContent = verVacios ? "◂ esconder los " + nVacios + " sin ventas"
+        : "▸ ver los " + nVacios + " sin ventas con estos filtros";
+    }
+  });
 }
 document.addEventListener("click", () => document.querySelectorAll(".ms.open").forEach(m => m.classList.remove("open")));
 
@@ -862,6 +978,15 @@ function filtrarMes(m) {
   sel.value = (String(filtros.mes) === String(m)) ? "" : String(m);
   aplicar();
 }
+// Tocar un día en el gráfico lo deja solo (y volver a tocarlo lo saca).
+function elegirDia(fecha) {
+  const d = document.getElementById("f-desde"), h = document.getElementById("f-hasta");
+  const puesto = (d.value === fecha && h.value === fecha);
+  d.value = puesto ? "" : fecha;
+  h.value = puesto ? "" : fecha;
+  aplicar();
+}
+
 // Clic en el logo (o tecla Escape): vuelve al resumen y saca todos los filtros.
 function volverAlInicio() {
   PAGINA = "__resumen";
@@ -887,10 +1012,14 @@ function limpiarFiltros() {
   document.getElementById("f-doc").value = "factura";
   document.getElementById("f-desde").value = "";
   document.getElementById("f-hasta").value = "";
-  ["ms-vendedor", "ms-canal", "ms-categoria", "ms-producto"].forEach(id => {
+  MULTIS.forEach(([id]) => {
     const c = document.getElementById(id);
-    c.querySelectorAll("input").forEach(i => i.checked = true);
+    c.querySelectorAll('input[type=checkbox]').forEach(i => i.checked = true);
+    c.dataset.vacios = "";
+    const buscar = c.querySelector(".ms-buscar");
+    if (buscar) { buscar.value = ""; msBuscar(id, ""); }
     c.querySelector(".ms-btn").textContent = "-- Todos --";
+    c.querySelector(".ms-btn").title = "Todos";
   });
   aplicar();
 }
@@ -904,17 +1033,23 @@ function leerFiltrosDeUI() {
   filtros.desde = document.getElementById("f-desde").value;
   filtros.hasta = document.getElementById("f-hasta").value;
 }
-function filtrar(ignorarDoc) {
+/**
+ * `omitir` saltea uno de los filtros desplegables. Sirve para saber qué se
+ * podría elegir en ese filtro sin que él mismo achique la lista: es lo que hace
+ * que al elegir un canal, el desplegable de productos muestre sólo los que ese
+ * canal vende, pero el de canales siga mostrando todos los canales.
+ */
+function filtrar(ignorarDoc, omitir) {
   const cli = norm(filtros.cliente);
   return FILAS.filter(r => {
     if (filtros.anio && String(r.anio) !== String(filtros.anio)) return false;
     if (filtros.mes && String(r.mes) !== String(filtros.mes)) return false;
     if (filtros.desde && r.ymd < filtros.desde) return false;
     if (filtros.hasta && r.ymd > filtros.hasta) return false;
-    if (filtros.vendedores.length && !filtros.vendedores.includes(r.vendedor)) return false;
-    if (filtros.canales.length && !filtros.canales.includes(r.canal)) return false;
-    if (filtros.categorias.length && !filtros.categorias.includes(r.categoria)) return false;
-    if (filtros.productos.length && !filtros.productos.includes(r.producto)) return false;
+    if (omitir !== "vendedores" && filtros.vendedores.length && !filtros.vendedores.includes(r.vendedor)) return false;
+    if (omitir !== "canales" && filtros.canales.length && !filtros.canales.includes(r.canal)) return false;
+    if (omitir !== "categorias" && filtros.categorias.length && !filtros.categorias.includes(r.categoria)) return false;
+    if (omitir !== "productos" && filtros.productos.length && !filtros.productos.includes(r.producto)) return false;
     if (filtros.clientes.length && !filtros.clientes.includes(r.cliente)) return false;
     if (cli && !norm(r.clienteCompleto).includes(cli) && !norm(r.cliente).includes(cli)) return false;
     if (!ignorarDoc) {
@@ -956,6 +1091,7 @@ function aplicarInterno() {
     " · " + num(datos.length) + " líneas de factura";
 
   renderChips();
+  refrescarOpciones();
   if (esSeg) return renderSeguimiento();
   if (esObjetivos) return renderObjetivos(datos);
   if (esNC) return renderNC(datos);
@@ -1004,16 +1140,15 @@ function quitarFiltro(destino, valor) {
 }
 // Deja los desplegables mostrando lo mismo que los filtros aplicados por clic.
 function sincronizarMultiselects() {
-  [["ms-vendedor", "vendedores"], ["ms-canal", "canales"], ["ms-categoria", "categorias"], ["ms-producto", "productos"]]
-    .forEach(([id, campo]) => {
-      const cont = document.getElementById(id); if (!cont) return;
-      const cajas = [...cont.querySelectorAll('.ms-panel input[value]')];
-      const sel = filtros[campo];
-      cajas.forEach(c => c.checked = (sel.length === 0 || sel.includes(c.value)));
-      const marcadas = cajas.filter(c => c.checked).length;
-      cont.querySelector(".ms-all input").checked = (marcadas === cajas.length);
-      cont.querySelector(".ms-btn").textContent = sel.length ? sel.length + " seleccionado" + (sel.length > 1 ? "s" : "") : "-- Todos --";
-    });
+  MULTIS.forEach(([id, , campo]) => {
+    const cont = document.getElementById(id); if (!cont) return;
+    const cajas = [...cont.querySelectorAll('.ms-panel input[value]')];
+    const sel = filtros[campo];
+    cajas.forEach(c => c.checked = (sel.length === 0 || sel.includes(c.value)));
+    const marcadas = cajas.filter(c => c.checked).length;
+    cont.querySelector(".ms-all input").checked = (marcadas === cajas.length);
+    etiquetaBoton(cont, sel, cajas.length);
+  });
 }
 // Muestra los filtros activos como etiquetas, para saber siempre qué se está viendo.
 function renderChips() {
@@ -1028,6 +1163,12 @@ function renderChips() {
   });
   if (filtros.mes) h += '<span class="chip">Mes: <b>' + MESES[+filtros.mes] + '</b><span class="x" onclick="document.getElementById(\'f-mes\').value=\'\';aplicar();">×</span></span>';
   if (filtros.cliente) h += '<span class="chip">Busca: <b>' + esc(filtros.cliente) + '</b><span class="x" onclick="document.getElementById(\'f-cliente\').value=\'\';aplicar();">×</span></span>';
+  if (filtros.desde || filtros.hasta) {
+    const r = filtros.desde === filtros.hasta ? filtros.desde
+      : (filtros.desde || "…") + " a " + (filtros.hasta || "…");
+    h += '<span class="chip">Fecha: <b>' + esc(r) + '</b><span class="x" title="Quitar" ' +
+      'onclick="document.getElementById(\'f-desde\').value=\'\';document.getElementById(\'f-hasta\').value=\'\';aplicar();">×</span></span>';
+  }
   if (h) h += '<span class="chip chip-limpiar" onclick="limpiarFiltros()">limpiar todo</span>';
   cont.innerHTML = h;
 }
@@ -1178,9 +1319,36 @@ function renderDatos(datos) {
     agrupar(datos, campoCli, true).length + (vistaClientes === "grupo" ? " clientes" : " sucursales");
 
   renderDocumentos(datos);
-  donut("ch-canal", porCanal.slice(0, 10));
-  donut("ch-categoria", agrupar(datos, "categoria", true).slice(0, 10));
+
+  // Las tortas se abren un nivel solas: si ya se eligió un canal, mostrar «100%
+  // de ese canal» no dice nada, así que pasa a abrirse por vendedor. Lo mismo la
+  // de categorías, que al elegir una se abre por producto.
+  const enCanal = (PAGINA !== "__resumen" && !PAGINA.startsWith("__")) ? PAGINA
+                : (filtros.canales.length === 1 ? filtros.canales[0] : "");
+  if (enCanal) {
+    tituloGrafico("canal", "Contribución por Vendedor", "dentro de " + enCanal);
+    donut("ch-canal", agrupar(datos, "vendedor", true).slice(0, 10), "vendedor");
+  } else {
+    tituloGrafico("canal", "Contribución por Canal", "");
+    donut("ch-canal", porCanal.slice(0, 10), "canal");
+  }
+
+  const enCat = filtros.categorias.length === 1 ? filtros.categorias[0] : "";
+  if (enCat) {
+    tituloGrafico("categoria", "Contribución por Producto", "dentro de " + enCat);
+    donut("ch-categoria", agrupar(datos, "producto", true).slice(0, 10), "producto");
+  } else {
+    tituloGrafico("categoria", "Contribución por Categoría", "");
+    donut("ch-categoria", agrupar(datos, "categoria", true).slice(0, 10), "categoria");
+  }
+
   evolucion(datos);
+}
+
+function tituloGrafico(cual, titulo, sub) {
+  const t = document.getElementById("tit-" + cual), s = document.getElementById("sub-" + cual);
+  if (t) t.textContent = titulo;
+  if (s) { s.textContent = sub; s.title = sub; }
 }
 
 // Evolución de ventas: por DÍA cuando se está mirando un mes puntual o un rango
@@ -1223,6 +1391,12 @@ function evolucion(datos) {
   const cv = document.getElementById("ch-evolucion"); if (!cv) return;
 
   const prom = valores.reduce((a, b) => a + b, 0) / valores.length;
+  // Tocar una barra filtra ese mes; tocar un punto del gráfico diario filtra ese día.
+  const alTocar = (ev, els) => {
+    if (!els || !els.length) return;
+    const k = claves[els[0].index]; if (!k) return;
+    if (porDia) elegirDia(k); else filtrarMes(+k.slice(5));
+  };
   charts["ch-evolucion"] = new Chart(cv.getContext("2d"), {
     data: {
       labels: etiquetas,
@@ -1238,9 +1412,13 @@ function evolucion(datos) {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
+      onClick: alTocar,
       plugins: {
         legend: { display: true, labels: { boxWidth: 11, font: { size: 10.5 } } },
-        tooltip: { callbacks: { label: c => c.dataset.label + ": " + gs(c.parsed.y) } }
+        tooltip: { callbacks: {
+          label: c => c.dataset.label + ": " + gs(c.parsed.y),
+          footer: () => porDia ? "Tocá para ver sólo ese día" : "Tocá para filtrar el mes"
+        } }
       },
       scales: {
         x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkipPadding: 12 } },
@@ -1884,7 +2062,7 @@ function avisoSeg(txt, malo) {
 }
 
 const PALETA = ["#f07d20", "#2f9e5f", "#3182ce", "#805ad5", "#d64545", "#d69e2e", "#319795", "#dd6b20", "#5a67d8", "#718096"];
-function donut(id, filas) {
+function donut(id, filas, campo) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
   if (typeof Chart === "undefined") {
     // El gráfico viene de un CDN; si no está disponible, el resto del panel sigue funcionando.
@@ -1903,9 +2081,20 @@ function donut(id, filas) {
     },
     options: {
       responsive: true, maintainAspectRatio: false, cutout: "55%",
+      // Tocar una porción (o su referencia) filtra por ella; tocarla de nuevo la saca.
+      onClick: (ev, els) => {
+        if (!campo || !els || !els.length) return;
+        const f = filas[els[0].index]; if (f) filtrarPor(campo, f.clave);
+      },
       plugins: {
-        legend: { position: "right", labels: { boxWidth: 11, font: { size: 10.5 } } },
-        tooltip: { callbacks: { label: c => c.label + ": " + gs(c.parsed) } }
+        legend: {
+          position: "right", labels: { boxWidth: 11, font: { size: 10.5 } },
+          onClick: (ev, item) => { const f = campo && filas[item.index]; if (f) filtrarPor(campo, f.clave); }
+        },
+        tooltip: { callbacks: {
+          label: c => c.label + ": " + gs(c.parsed),
+          footer: () => campo ? "Tocá para filtrar" : ""
+        } }
       }
     },
     plugins: [{
