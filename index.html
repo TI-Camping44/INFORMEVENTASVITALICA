@@ -1140,6 +1140,10 @@ function cerrarCompartir() { document.getElementById("dlg-compartir").classList.
 
 // ------------------------------------------------------------- filtrado
 function leerFiltrosDeUI() {
+  // Vista compartida y fijada: los filtros vienen de la dirección y no se vuelven
+  // a leer de la pantalla. Si no, bastaría con escribirle un valor a un campo
+  // deshabilitado (lo cual el navegador permite) para destrabar la vista.
+  if (FILTROS_FIJOS) return;
   filtros.anio = document.getElementById("f-anio").value;
   filtros.cliente = document.getElementById("f-cliente").value.trim();
   filtros.doc = document.getElementById("f-doc").value;
@@ -1277,20 +1281,27 @@ function sincronizarMultiselects() {
 function renderChips() {
   const cont = document.getElementById("chips");
   const etiquetas = { vendedores: "Vendedor", canales: "Canal", categorias: "Categoría", productos: "Producto", clientes: "Cliente" };
+  // En una vista compartida y fijada las etiquetas se muestran, pero sin la «×»:
+  // escribir en un <select> deshabilitado igual funciona, así que la cruz sería
+  // una puerta abierta para sacar el mes, la búsqueda o la fecha.
+  const x = (onclick, titulo) => FILTROS_FIJOS ? "" :
+    '<span class="x" title="' + (titulo || "Quitar") + '" onclick="' + onclick + '">×</span>';
   let h = "";
   Object.keys(etiquetas).forEach(campo => {
     (filtros[campo] || []).forEach(v => {
       h += '<span class="chip">' + etiquetas[campo] + ': <b>' + esc(v) + '</b>' +
-        '<span class="x" title="Quitar" onclick="quitarFiltro(\'' + campo + '\', ' + JSON.stringify(v).replace(/"/g, "&quot;") + ')">×</span></span>';
+        x("quitarFiltro('" + campo + "', " + JSON.stringify(v).replace(/"/g, "&quot;") + ")") + '</span>';
     });
   });
-  if (filtros.mes) h += '<span class="chip">Mes: <b>' + MESES[+filtros.mes] + '</b><span class="x" onclick="document.getElementById(\'f-mes\').value=\'\';aplicar();">×</span></span>';
-  if (filtros.cliente) h += '<span class="chip">Busca: <b>' + esc(filtros.cliente) + '</b><span class="x" onclick="document.getElementById(\'f-cliente\').value=\'\';aplicar();">×</span></span>';
+  if (filtros.mes) h += '<span class="chip">Mes: <b>' + MESES[+filtros.mes] + '</b>' +
+    x("document.getElementById('f-mes').value='';aplicar();") + '</span>';
+  if (filtros.cliente) h += '<span class="chip">Busca: <b>' + esc(filtros.cliente) + '</b>' +
+    x("document.getElementById('f-cliente').value='';aplicar();") + '</span>';
   if (filtros.desde || filtros.hasta) {
     const r = filtros.desde === filtros.hasta ? filtros.desde
       : (filtros.desde || "…") + " a " + (filtros.hasta || "…");
-    h += '<span class="chip">Fecha: <b>' + esc(r) + '</b><span class="x" title="Quitar" ' +
-      'onclick="document.getElementById(\'f-desde\').value=\'\';document.getElementById(\'f-hasta\').value=\'\';aplicar();">×</span></span>';
+    h += '<span class="chip">Fecha: <b>' + esc(r) + '</b>' +
+      x("document.getElementById('f-desde').value='';document.getElementById('f-hasta').value='';aplicar();") + '</span>';
   }
   if (h && !FILTROS_FIJOS) h += '<span class="chip chip-limpiar" onclick="limpiarFiltros()">limpiar todo</span>';
   cont.innerHTML = h;
