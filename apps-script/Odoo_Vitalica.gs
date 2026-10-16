@@ -390,7 +390,7 @@ function actualizarDatosOdoo_(silencioso) {
     ["move_id.company_id", "=", EMPRESA_ID],
     ["date", ">=", fechaInicioOdoo],
     ["date", "<=", fechaFinOdoo]
-  ]], { fields: ["date", "quantity", "name", "price_unit", "discount", "price_total", "price_subtotal", "balance", "amount_currency", "product_id", "partner_id", "move_id", "currency_id"], limit: 80000 });
+  ]], { fields: ["date", "quantity", "name", "price_unit", "discount", "price_total", "price_subtotal", "balance", "amount_currency", "product_id", "partner_id", "move_id", "currency_id", "product_uom_id"], limit: 80000 });
 
   var rowsOut = [];
   if (lines && lines.length > 0) {
@@ -516,7 +516,10 @@ function actualizarDatosOdoo_(silencioso) {
 
       var precioPromedio = cantidad !== 0 ? (subtotal / cantidad) : 0;
       rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, grupoEcom, line.move_id[0], teamName, entrega,
-        (line.partner_id ? (telMap[line.partner_id[0]] || "") : "")]);
+        (line.partner_id ? (telMap[line.partner_id[0]] || "") : ""),
+        // 📏 Unidad de medida de la línea. Sin esto, 10 cajas y 10 unidades suman
+        // 20 y nadie se entera: es la causa clásica de que dos informes no cuadren.
+        (line.product_uom_id ? line.product_uom_id[1] : "")]);
     });
   }
 
@@ -526,8 +529,8 @@ function actualizarDatosOdoo_(silencioso) {
     catch (e) { ss.toast("No se pudieron traer las remisiones: " + e.message, "⚠️", 10); }
   }
 
-  if (sheetData.getMaxColumns() < 38) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 38 - sheetData.getMaxColumns());
-  sheetData.getRange(1, 1, 1, 36).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono"]]).setFontWeight("bold");
+  if (sheetData.getMaxColumns() < 39) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 39 - sheetData.getMaxColumns());
+  sheetData.getRange(1, 1, 1, 37).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono", "Unidad"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
   // Sello de última actualización: el dashboard lo muestra en el menú lateral.
   configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
@@ -631,7 +634,7 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
 
   var lineas = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order.line", "search_read",
     [[["order_id", "in", ids]]],
-    { fields: ["order_id", "product_id", "product_uom_qty", "price_subtotal", "price_total", "price_unit", "discount", "name"], limit: 80000 }) || [];
+    { fields: ["order_id", "product_id", "product_uom_qty", "price_subtotal", "price_total", "price_unit", "discount", "name", "product_uom"], limit: 80000 }) || [];
   if (!lineas.length) return 0;
 
   var prodIds = [];
@@ -695,7 +698,8 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
       fechaStr, 0, "Contado", total, total, 1, cliente, marcaOriginal, marcaFinal, unidadNegocio,
       vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(l.discount || 0),
       precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, "", "so-" + orden.id, teamName, entrega,
-      (orden.partner_id ? (telMap[orden.partner_id[0]] || "") : "")]);
+      (orden.partner_id ? (telMap[orden.partner_id[0]] || "") : ""),
+      (l.product_uom ? l.product_uom[1] : "")]);
     agregadas++;
   });
   return agregadas;

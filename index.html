@@ -98,6 +98,10 @@ select, input[type=date], input[type=text] { padding: 6px 8px; border: 1px solid
 .c-nd { background: var(--nd-bg); color: var(--nd); font-weight: 600; }
 .e-ok { color: var(--ok); font-weight: 700; } .e-at { color: var(--at); font-weight: 700; }
 .e-mal { color: var(--mal); font-weight: 700; } .e-nd { color: var(--nd); font-weight: 700; }
+/* Marquita en los rankings: este total ya tiene restadas las devoluciones. */
+.pin-nc { display: inline-block; background: var(--mal-bg); color: var(--mal); border: 1px solid #f0c2c2;
+          border-radius: 20px; padding: 0 6px; font-size: 9.5px; font-weight: 700; margin-left: 5px;
+          white-space: nowrap; vertical-align: 1px; }
 .pin-plan { display: inline-block; background: var(--nd-bg); color: var(--nd); border: 1px solid #dde3ea;
             border-radius: 20px; padding: 1px 7px; font-size: 9.5px; font-weight: 700; margin-left: 5px;
             white-space: nowrap; }
@@ -273,6 +277,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   <div class="menu-item" data-page="__seguimiento" onclick="irA('__seguimiento', this)">📞 Seguimiento</div>
   <div class="menu-item" data-page="__objetivos" onclick="irA('__objetivos', this)">🎯 Objetivos</div>
   <div class="menu-item" data-page="__plan" onclick="irA('__plan', this)">🧭 Plan Estratégico</div>
+  <div class="menu-item" data-page="__audit" onclick="irA('__audit', this)">🔍 Auditoría de Producto</div>
   <div class="menu-item" data-page="__nc" onclick="irA('__nc', this)">↩️ Notas de Crédito</div>
   <div class="side-note">
     Importes <b>sin IVA</b>.<br>Sin Merchandising ni Muestrario.<br>
@@ -317,6 +322,9 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
       tienen factura: muestrarios y entregas pendientes de facturar) se cuenta aparte y se puede
       sumar con el filtro «Documento».
       «Clientes activos» = clientes que compraron en los últimos <b id="nmeses-activo">3</b> meses.
+      Las tablas muestran la venta <b>neta</b>: a cada producto, cliente, vendedor, categoría y canal ya
+      se le restaron sus notas de crédito, y los que tienen devoluciones llevan la marca ↩. Para ver
+      de dónde sale cada número de un producto, está la pestaña <b>🔍 Auditoría de Producto</b>.
       <b>Todo filtra:</b> tocá una porción de los gráficos, una barra de la evolución o una fila de las
       tablas y el informe entero se recalcula. Los desplegables sólo ofrecen lo que tiene ventas con los
       filtros puestos, con el monto al lado, y traen buscador.</div>
@@ -392,6 +400,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   </div>
   <div id="vista-objetivos" class="hide"></div>
   <div id="vista-plan" class="hide"></div>
+  <div id="vista-audit" class="hide"></div>
   <div id="vista-nc" class="hide"></div>
 </main>
 
@@ -890,6 +899,9 @@ function normalizarData(filas) {
       // Teléfono del cliente (columna 36). Si la planilla todavía es la vieja,
       // llega vacío y la tabla simplemente muestra un guion.
       telefono: String(r[35] || "").trim(),
+      // Unidad de medida de la línea (columna 37). Con planillas viejas llega
+      // vacía y la auditoría lo dice, en vez de dar por hecho que es una sola.
+      unidad: String(r[36] || "").trim(),
       monto: aNumero(r[30])
     });
   }
@@ -1359,8 +1371,10 @@ function aplicarInterno() {
   const datos = filtrar();
 
   const esObjetivos = PAGINA === "__objetivos", esNC = PAGINA === "__nc",
-        esSeg = PAGINA === "__seguimiento", esPlan = PAGINA === "__plan";
-  document.getElementById("vista-datos").classList.toggle("hide", esObjetivos || esNC || esSeg || esPlan);
+        esSeg = PAGINA === "__seguimiento", esPlan = PAGINA === "__plan",
+        esAudit = PAGINA === "__audit";
+  document.getElementById("vista-datos").classList.toggle("hide", esObjetivos || esNC || esSeg || esPlan || esAudit);
+  document.getElementById("vista-audit").classList.toggle("hide", !esAudit);
   document.getElementById("vista-objetivos").classList.toggle("hide", !esObjetivos);
   document.getElementById("vista-plan").classList.toggle("hide", !esPlan);
   document.getElementById("vista-nc").classList.toggle("hide", !esNC);
@@ -1369,6 +1383,7 @@ function aplicarInterno() {
   const nombrePagina = PAGINA === "__resumen" ? "Resumen Principal"
     : PAGINA === "__objetivos" ? "Objetivos y Avance"
       : PAGINA === "__nc" ? "Notas de Crédito"
+        : PAGINA === "__audit" ? "Auditoría de Producto"
         : PAGINA === "__plan" ? "Plan Estratégico Comercial"
           : PAGINA === "__seguimiento" ? "Seguimiento de Clientes" : PAGINA;
   document.getElementById("txt-pagina").textContent = nombrePagina;
@@ -1380,24 +1395,40 @@ function aplicarInterno() {
   refrescarOpciones();
   if (esSeg) return renderSeguimiento();
   if (esPlan) return renderPlan();
+  if (esAudit) return renderAuditoria();
   if (esObjetivos) return renderObjetivos(datos);
   if (esNC) return renderNC(datos);
   renderDatos(datos);
 }
 
 // ------------------------------------------------------------ agrupar
-function agrupar(datos, campo, soloVentas) {
+/**
+ * Agrupa las ventas por un campo.
+ *
+ * `netear` resta las notas de crédito en vez de ignorarlas. Antes se salteaban,
+ * y los rankings mostraban la venta BRUTA: un producto con devoluciones figuraba
+ * por más de lo que realmente se vendió, y no coincidía con ningún otro informe.
+ * Las notas no cuentan como factura ni como cliente nuevo, y lo devuelto se
+ * guarda aparte para poder mostrarlo.
+ */
+function agrupar(datos, campo, netear) {
   const acc = {};
   datos.forEach(r => {
-    if (soloVentas && r.esNC) return;
     const k = r[campo] || "(sin dato)";
-    if (!acc[k]) acc[k] = { monto: 0, cantidad: 0, facturas: new Set(), clientes: new Set() };
+    if (!acc[k]) acc[k] = { monto: 0, cantidad: 0, nc: 0, ncU: 0, facturas: new Set(), clientes: new Set() };
+    if (r.esNC) {
+      if (!netear) return;                       // la vista de NC las maneja aparte
+      acc[k].nc += r.monto; acc[k].ncU += r.cantidad;
+    }
     acc[k].monto += r.monto; acc[k].cantidad += r.cantidad;
-    if (r.facturaId) acc[k].facturas.add(r.facturaId);
-    if (r.cliente) acc[k].clientes.add(r.cliente);
+    if (!r.esNC) {
+      if (r.facturaId) acc[k].facturas.add(r.facturaId);
+      if (r.cliente) acc[k].clientes.add(r.cliente);
+    }
   });
   return Object.keys(acc).map(k => ({
     clave: k, monto: acc[k].monto, cantidad: acc[k].cantidad,
+    nc: acc[k].nc, ncU: acc[k].ncU,
     facturas: acc[k].facturas.size, clientes: acc[k].clientes.size
   })).sort((a, b) => b.monto - a.monto);
 }
@@ -1505,7 +1536,10 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
     const click = campo ? " class='clickable" + (sel ? " total-row" : "") + "' onclick='filtrarPor(\"" + campo + "\", " +
       JSON.stringify(f.clave).replace(/'/g, "&#39;").replace(/"/g, "&quot;") + ")' title='Filtrar por " + esc(f.clave) + "'" : "";
     h += "<tr" + click + "><td class='idx'>" + (i + 1) + "</td>" +
-      "<td class='col-nombre' title='" + esc(f.clave) + "'><span class='txt'>" + esc(f.clave) + "</span>" +
+      "<td class='col-nombre' title='" + esc(f.clave) +
+        (f.nc ? " — ya tiene restadas devoluciones por " + gs(Math.abs(f.nc)) : "") + "'><span class='txt'>" +
+        esc(f.clave) + (f.nc ? " <span class='pin-nc' title='Neto: ya se restaron " + gs(Math.abs(f.nc)) +
+        " de notas de crédito'>↩ " + compacto(Math.abs(f.nc)) + "</span>" : "") + "</span>" +
       "<div class='bar-wrap'><div class='bar' style='width:" + Math.min(100, Math.abs(f.monto) / max * 100) + "%'></div></div></td>" +
       "<td class='num'>" + num(f.monto) + "</td>";
     if (opts.cantidad) h += "<td class='num'>" + num(f.cantidad) + "</td>";
@@ -2410,6 +2444,189 @@ function donut(id, filas, campo) {
       }
     }]
   });
+}
+
+// ------------------------------------------------ Auditoría de producto
+/**
+ * Por qué existe esta pestaña: el tablero de stock y rotación y este informe
+ * dieron números distintos para el mismo producto (83 contra 185 unidades), y
+ * no había forma de ver de dónde salía cada uno. Acá se abre un producto y se
+ * muestra, paso a paso, cómo se llega a cada total: bruto, menos devoluciones,
+ * más lo entregado sin facturar, y recortado a la ventana de meses que usa el
+ * otro tablero. Sirve para cualquier producto, no sólo para el que falló.
+ *
+ * El filtro de mes de arriba NO se aplica: una auditoría necesita el año entero.
+ */
+let auditProd = "";
+function elegirAudit(v) { auditProd = v; renderAuditoria(); }
+
+// Ventana de meses del tablero de rotación, para poder comparar lo mismo.
+const AUDIT_VENTANA = { desde: 4, hasta: 12, etiqueta: "abril a octubre" };
+
+function renderAuditoria() {
+  const cont = document.getElementById("vista-audit");
+  const anio = filtros.anio || String(new Date().getFullYear());
+  const delAnio = FILAS.filter(r => String(r.anio) === String(anio));
+
+  // Lista de productos con movimiento, ordenada por unidades, para el selector.
+  const porProd = {};
+  delAnio.forEach(r => {
+    porProd[r.producto] = (porProd[r.producto] || 0) + Math.abs(r.cantidad);
+  });
+  const productos = Object.keys(porProd).sort((a, b) => porProd[b] - porProd[a]);
+  if (!productos.length) {
+    cont.innerHTML = '<div class="card"><div class="empty">No hay movimientos en ' + esc(anio) + '.</div></div>';
+    return;
+  }
+  // Si el filtro de producto de arriba tiene uno solo elegido, se audita ése.
+  if (!auditProd || !productos.includes(auditProd)) {
+    auditProd = (filtros.productos.length === 1 && productos.includes(filtros.productos[0]))
+      ? filtros.productos[0] : productos[0];
+  }
+
+  const filas = delAnio.filter(r => r.producto === auditProd);
+
+  // ---- los tres totales que se confunden entre sí ----
+  const fact = filas.filter(r => !r.esRemision && !r.esNC);
+  const notas = filas.filter(r => r.esNC);
+  const remis = filas.filter(r => r.esRemision);
+  const sum = (a, campo) => a.reduce((t, r) => t + r[campo], 0);
+  const brutoU = sum(fact, "cantidad"), brutoM = sum(fact, "monto");
+  // Las notas de crédito ya vienen con cantidad y monto en negativo.
+  const ncU = sum(notas, "cantidad"), ncM = sum(notas, "monto");
+  const remU = sum(remis, "cantidad"), remM = sum(remis, "monto");
+  const netoU = brutoU + ncU, netoM = brutoM + ncM;
+
+  const enVentana = r => r.mes >= AUDIT_VENTANA.desde && r.mes <= AUDIT_VENTANA.hasta;
+  const ventanaU = sum(fact.filter(enVentana), "cantidad") + sum(notas.filter(enVentana), "cantidad");
+
+  // ---- unidades de medida: si hay más de una, los totales no significan nada ----
+  const unidades = {};
+  filas.forEach(r => { const u = r.unidad || "(sin unidad)"; unidades[u] = (unidades[u] || 0) + r.cantidad; });
+  const listaU = Object.keys(unidades);
+  const mezcla = listaU.filter(u => u !== "(sin unidad)").length > 1;
+  const sinUnidad = listaU.length === 1 && listaU[0] === "(sin unidad)";
+
+  let h = '<div class="note">Esta pestaña <b>no usa el filtro de mes</b> de arriba: audita el año ' +
+    esc(anio) + ' completo. Cambiá el año con el filtro de Año. Los tres totales de abajo son ' +
+    'distintos a propósito: la mayoría de los descuadres entre informes salen de comparar uno con otro.</div>';
+
+  h += '<div class="card" style="padding:10px 12px"><h3 style="margin:0 0 7px">Producto a auditar ' +
+    '<small>' + productos.length + ' con movimiento en ' + esc(anio) + '</small></h3>' +
+    '<select id="sel-audit" style="width:100%;max-width:760px" onchange="elegirAudit(this.value)">' +
+    productos.map(pr => '<option value="' + esc(pr) + '"' + (pr === auditProd ? ' selected' : '') + '>' +
+      esc(pr) + ' — ' + num(porProd[pr]) + ' u</option>').join("") + '</select></div>';
+
+  h += '<div class="kpi-row">' +
+    kpi("Facturado bruto", num(brutoU) + " u", gs(brutoM) + " · " + fact.length + " líneas") +
+    kpi("Devoluciones (NC)", num(ncU) + " u", notas.length ? gs(ncM) + " · " + notas.length + " líneas" : "ninguna", !!notas.length) +
+    kpi("Facturado neto", num(netoU) + " u", gs(netoM) + " · bruto menos devoluciones") +
+    kpi("Entregado sin facturar", num(remU) + " u", remis.length ? gs(remM) + " · remisiones" : "ninguna") +
+    kpi("Total movido", num(netoU + remU) + " u", "neto + entregado sin facturar") +
+    kpi("Unidades de medida", String(listaU.length), mezcla ? "⚠ hay más de una: no son sumables" :
+        (sinUnidad ? "la planilla todavía no la trae" : esc(listaU[0]))) +
+    '</div>';
+
+  if (mezcla) {
+    h += '<div class="err" style="max-width:none;margin-bottom:12px"><b>Atención: este producto se factura ' +
+      'en más de una unidad de medida</b> (' + listaU.map(u => esc(u) + ": " + num(unidades[u])).join(" · ") +
+      '). Sumar esas cantidades no tiene sentido y es la causa clásica de que dos informes no cuadren. ' +
+      'Hay que unificar la unidad en Odoo o convertir antes de sumar.</div>';
+  } else if (sinUnidad) {
+    h += '<div class="note">La columna <b>Unidad</b> todavía no está en la planilla. Corré ' +
+      '«🔄 Descargar Ventas Odoo» con el script actualizado y la auditoría va a poder avisar ' +
+      'si un producto se factura en unidades distintas.</div>';
+  }
+
+  // ---- conciliación paso a paso ----
+  h += '<div class="card"><h3>Conciliación <small>de dónde sale cada número, en orden</small></h3>' +
+    '<table id="t-audit-conc"></table></div>';
+
+  h += '<div class="grid2">' +
+    '<div class="card"><h3>Por mes <small>unidades · así se ve si todo cayó en un mes</small></h3>' +
+    '<table id="t-audit-mes"></table></div>' +
+    '<div class="card"><h3>Por canal</h3><table id="t-audit-canal"></table></div>' +
+    '<div class="card"><h3>Por cliente</h3><div class="tbl-scroll"><table id="t-audit-cli"></table></div></div>' +
+    '<div class="card"><h3>Por unidad de medida</h3><table id="t-audit-um"></table></div>' +
+    '</div>';
+
+  h += '<div class="card"><h3>Documento por documento <small>' + filas.length +
+    ' líneas · esto es la prueba de cada total de arriba</small></h3>' +
+    '<div class="tbl-scroll" style="max-height:520px"><table id="t-audit-det"></table></div></div>';
+
+  cont.innerHTML = h;
+
+  // ============ conciliación ============
+  const fila = (concepto, u, m, nota, clase) =>
+    "<tr" + (clase ? " class='" + clase + "'" : "") + "><td class='col-nombre'><b>" + concepto + "</b>" +
+    (nota ? "<span class='sub'>" + nota + "</span>" : "") + "</td>" +
+    "<td class='num'>" + (u === null ? "—" : num(u)) + "</td>" +
+    "<td class='num'>" + (m === null ? "—" : gs(m)) + "</td></tr>";
+  document.getElementById("t-audit-conc").innerHTML =
+    "<thead><tr><th class='col-nombre'>Concepto</th><th class='num' style='width:130px'>Unidades</th>" +
+    "<th class='num' style='width:170px'>Sin IVA PYG</th></tr></thead><tbody>" +
+    fila("Facturas", brutoU, brutoM, "sin descontar nada") +
+    fila("Notas de crédito", ncU, ncM, notas.length ? "devoluciones, van en negativo" : "no hubo") +
+    fila("= Facturado neto", netoU, netoM,
+         "lo que de verdad se vendió · es lo que muestran «Mejores Productos» y «Mejores Clientes»", "total-row") +
+    fila("Entregado sin facturar", remU, remM, remis.length ? "remisiones: salió del depósito, todavía sin factura" : "no hubo") +
+    fila("= Total movido", netoU + remU, netoM + remM, "lo que salió del stock", "total-row") +
+    fila("Sólo " + AUDIT_VENTANA.etiqueta, ventanaU, null,
+         "la ventana que usa el tablero de stock y rotación: comparar contra esto, no contra el bruto") +
+    "</tbody>";
+
+  // ============ por mes ============
+  const mesU = {}, mesM = {};
+  filas.forEach(r => { mesU[r.mes] = (mesU[r.mes] || 0) + r.cantidad; mesM[r.mes] = (mesM[r.mes] || 0) + r.monto; });
+  const conMov = Object.keys(mesU).map(Number).sort((a, b) => a - b);
+  document.getElementById("t-audit-mes").innerHTML = conMov.length
+    ? "<thead><tr><th class='col-nombre'>Mes</th><th class='num'>Unidades</th><th class='num w-monto'>Sin IVA PYG</th></tr></thead><tbody>" +
+      conMov.map(m => "<tr" + (m < AUDIT_VENTANA.desde ? " title='Fuera de la ventana del tablero de rotación'" : "") +
+        "><td class='col-nombre'>" + MESES[m] +
+        (m < AUDIT_VENTANA.desde ? " <span class='pin-plan'>fuera de la ventana</span>" : "") +
+        "</td><td class='num'>" + num(mesU[m]) + "</td><td class='num'>" + gs(mesM[m]) + "</td></tr>").join("") +
+      "<tr class='total-row'><td class='col-nombre'>Total</td><td class='num'>" + num(sum(filas, "cantidad")) +
+      "</td><td class='num'>" + gs(sum(filas, "monto")) + "</td></tr></tbody>"
+    : '<tbody><tr><td class="empty">Sin movimientos</td></tr></tbody>';
+
+  // ============ por canal / cliente / unidad ============
+  const tablita = (id, campo, etiqueta) => {
+    const acc = {};
+    filas.forEach(r => {
+      const k = (campo === "unidad" ? (r.unidad || "(sin unidad)") : r[campo]) || "(sin dato)";
+      if (!acc[k]) acc[k] = { u: 0, m: 0 };
+      acc[k].u += r.cantidad; acc[k].m += r.monto;
+    });
+    const arr = Object.keys(acc).sort((a, b) => acc[b].u - acc[a].u);
+    document.getElementById(id).innerHTML = arr.length
+      ? "<thead><tr><th class='col-nombre'>" + etiqueta + "</th><th class='num'>Unidades</th>" +
+        "<th class='num w-monto'>Sin IVA PYG</th></tr></thead><tbody>" +
+        arr.map(k => "<tr><td class='col-nombre' title='" + esc(k) + "'><span class='txt'>" + esc(k) +
+          "</span></td><td class='num'>" + num(acc[k].u) + "</td><td class='num'>" + gs(acc[k].m) +
+          "</td></tr>").join("") + "</tbody>"
+      : '<tbody><tr><td class="empty">Sin datos</td></tr></tbody>';
+  };
+  tablita("t-audit-canal", "canal", "Canal");
+  tablita("t-audit-cli", "cliente", "Cliente");
+  tablita("t-audit-um", "unidad", "Unidad de medida");
+
+  // ============ detalle ============
+  const det = filas.slice().sort((a, b) => a.fecha - b.fecha);
+  document.getElementById("t-audit-det").innerHTML = det.length
+    ? "<thead><tr><th style='width:88px'>Fecha</th><th style='width:104px'>Tipo</th>" +
+      "<th style='width:128px'>Número</th><th class='col-nombre'>Cliente</th>" +
+      "<th class='col-nombre' style='width:150px'>Canal</th><th class='num' style='width:84px'>Cantidad</th>" +
+      "<th style='width:96px'>Unidad</th><th class='num w-monto'>Sin IVA PYG</th></tr></thead><tbody>" +
+      det.map(r => "<tr" + (r.esNC ? " style='background:var(--mal-bg)'" : r.esRemision ? " style='background:var(--at-bg)'" : "") +
+        "><td>" + r.fecha.toLocaleDateString("es-PY") + "</td>" +
+        "<td>" + (r.esNC ? "Nota de crédito" : r.esRemision ? "Remisión" : "Factura") + "</td>" +
+        "<td class='col-nombre' title='" + esc(r.factura) + "'><span class='txt'>" + esc(r.factura) + "</span></td>" +
+        "<td class='col-nombre' title='" + esc(r.clienteCompleto) + "'><span class='txt'>" + esc(r.clienteCompleto) + "</span></td>" +
+        "<td class='col-nombre' title='" + esc(r.canal) + "'><span class='txt'>" + esc(r.canal) + "</span></td>" +
+        "<td class='num" + (r.cantidad < 0 ? " neg" : "") + "'>" + num(r.cantidad) + "</td>" +
+        "<td>" + esc(r.unidad || "—") + "</td>" +
+        "<td class='num'>" + gs(r.monto) + "</td></tr>").join("") + "</tbody>"
+    : '<tbody><tr><td class="empty">Sin movimientos</td></tr></tbody>';
 }
 
 // ------------------------------------------------ Plan Estratégico (vista)
