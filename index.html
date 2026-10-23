@@ -98,6 +98,7 @@ select, input[type=date], input[type=text] { padding: 6px 8px; border: 1px solid
 .c-nd { background: var(--nd-bg); color: var(--nd); font-weight: 600; }
 .e-ok { color: var(--ok); font-weight: 700; } .e-at { color: var(--at); font-weight: 700; }
 .e-mal { color: var(--mal); font-weight: 700; } .e-nd { color: var(--nd); font-weight: 700; }
+.e-exc { color: var(--exc, #2b6cb0); font-weight: 700; }
 /* Marquita en los rankings: este total ya tiene restadas las devoluciones. */
 .pin-nc { display: inline-block; background: var(--mal-bg); color: var(--mal); border: 1px solid #f0c2c2;
           border-radius: 20px; padding: 0 6px; font-size: 9.5px; font-weight: 700; margin-left: 5px;
@@ -132,6 +133,34 @@ select, input[type=date], input[type=text] { padding: 6px 8px; border: 1px solid
 #t-plan-canal th, #t-plan-acc th { white-space: nowrap; }
 #t-plan-canal td, #t-plan-acc td { vertical-align: top; padding-top: 7px; padding-bottom: 7px; }
 @media (max-width: 820px) { .card #t-plan-canal, .card #t-plan-acc { min-width: 900px; } }
+
+/* ---------- Stock y Rotación (datos del tablero ABC) ----------
+   El estado nunca se distingue sólo por color: cada píldora lleva su palabra. */
+:root { --exc:#2b6cb0; --exc-bg:#e9f0f9; }
+.est { display: inline-block; border-radius: 20px; padding: 2px 9px; font-size: 10px; font-weight: 800;
+       white-space: nowrap; }
+.est-mal { background: var(--mal-bg); color: var(--mal); }
+.est-at  { background: var(--at-bg);  color: var(--at); }
+.est-ok  { background: var(--ok-bg);  color: var(--ok); }
+.est-exc { background: var(--exc-bg); color: var(--exc); }
+.est-nd  { background: var(--nd-bg);  color: var(--nd); }
+/* Letra ABC del tablero de rotación, con el mismo color de allá. */
+.abc { display: inline-block; width: 17px; text-align: center; border-radius: 4px; font-weight: 800;
+       font-size: 10.5px; padding: 2px 0; color: #fff; }
+.abc-A { background: #2F7D4F; } .abc-B { background: #8a6d14; } .abc-C { background: #C0392B; }
+.abc-N { background: #3D6E8C; } .abc-NC { background: #8C7A57; }
+.sub-prod { display: block; font-size: 9.8px; color: var(--muted); margin-top: 1px; }
+.barra-cob { height: 4px; border-radius: 3px; background: #edf1f5; margin-top: 3px; overflow: hidden; }
+.barra-cob i { display: block; height: 100%; border-radius: 3px; }
+#t-stock td { vertical-align: top; }
+#t-stock th { white-space: nowrap; }
+/* La lista es larga: el encabezado se queda arriba mientras se baja. */
+#t-stock thead th { position: sticky; top: 0; z-index: 2; }
+#t-stock th:nth-child(6) { width: 96px; }
+#t-stock td:nth-child(7) { padding-left: 12px; }
+.filtros-stock { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 9px; }
+.filtros-stock .btn-sec.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+@media (max-width: 820px) { .card #t-stock { min-width: 820px; } }
 
 /* El título de la torta cambia según lo elegido: que no se parta en dos renglones. */
 .grid-charts .card h3 { gap: 8px; }
@@ -277,6 +306,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   <div class="menu-item" data-page="__seguimiento" onclick="irA('__seguimiento', this)">📞 Seguimiento</div>
   <div class="menu-item" data-page="__objetivos" onclick="irA('__objetivos', this)">🎯 Objetivos</div>
   <div class="menu-item" data-page="__plan" onclick="irA('__plan', this)">🧭 Plan Estratégico</div>
+  <div class="menu-item" data-page="__stock" onclick="irA('__stock', this)">📦 Stock y Rotación</div>
   <div class="menu-item" data-page="__audit" onclick="irA('__audit', this)">🔍 Auditoría de Producto</div>
   <div class="menu-item" data-page="__nc" onclick="irA('__nc', this)">↩️ Notas de Crédito</div>
   <div class="side-note">
@@ -317,6 +347,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
 
   <div id="vista-datos">
     <div class="kpi-row" id="kpis"></div>
+    <div id="convenios-gym" class="hide"></div>
     <div class="note">Observación: importes sin IVA. Por defecto se muestran <b>solo facturas</b>.
       Lo <b>entregado sin facturar</b> (órdenes de venta confirmadas y entregadas que todavía no
       tienen factura: muestrarios y entregas pendientes de facturar) se cuenta aparte y se puede
@@ -325,6 +356,8 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
       Las tablas muestran la venta <b>neta</b>: a cada producto, cliente, vendedor, categoría y canal ya
       se le restaron sus notas de crédito, y los que tienen devoluciones llevan la marca ↩. Para ver
       de dónde sale cada número de un producto, está la pestaña <b>🔍 Auditoría de Producto</b>.
+      Cuánto queda de cada producto y para cuántos meses alcanza está en
+      <b>📦 Stock y Rotación</b>, con estos mismos filtros: ya no hace falta abrir el otro tablero.
       <b>Todo filtra:</b> tocá una porción de los gráficos, una barra de la evolución o una fila de las
       tablas y el informe entero se recalcula. Los desplegables sólo ofrecen lo que tiene ventas con los
       filtros puestos, con el monto al lado, y traen buscador.</div>
@@ -401,6 +434,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   <div id="vista-objetivos" class="hide"></div>
   <div id="vista-plan" class="hide"></div>
   <div id="vista-audit" class="hide"></div>
+  <div id="vista-stock" class="hide"></div>
   <div id="vista-nc" class="hide"></div>
 </main>
 
@@ -438,7 +472,7 @@ let SHEET_GID_PLAN = '';
 const CANALES_PLAN = [
   { nombre: "Tiendas de suplementos",      canales: [], equipos: [],
     nota: "Odoo no lo distingue: hoy sus ventas caen dentro de Mayorista" },
-  { nombre: "Gimnasios",                   canales: ["Gimnasios y Muestrarios"], equipos: [] },
+  { nombre: "Gimnasios",                   canales: ["Convenio Gimnasios"], equipos: [] },
   { nombre: "Farmacias",                   canales: [], equipos: [],
     nota: "Odoo no lo distingue: canal nuevo, todavía no se factura aparte" },
   { nombre: "Distribuidores regionales",   canales: [], equipos: ["DISTRIBUIDOR", "DISTRIBUCION"],
@@ -452,11 +486,14 @@ const CANALES_PLAN = [
 const PLAN_VERDE = 95, PLAN_AMBAR = 75;
 
 // Canales del panel (mismos nombres que en el Apps Script).
-const CANALES = ["Mayorista", "Consumidor Final", "Gimnasios y Muestrarios", "Sin Comisiones", "E-commerce"];
+const CANALES = ["Mayorista", "Consumidor Final", "Convenio Gimnasios", "Sin Comisiones", "E-commerce"];
 
 // Canales que se muestran unificados. Se aplica acá también (no solo en el Apps
 // Script) para que tenga efecto inmediato, sin esperar el re-sync de la planilla.
-const UNIFICAR_CANALES = { "Distribuidor": "Mayorista" };
+// "Gimnasios y Muestrarios" pasó a llamarse "Convenio Gimnasios" (ahí ya no hay
+// muestrarios). Lo que la planilla tenga escrito con el nombre viejo se muestra
+// con el nuevo, así no quedan dos canales hasta que se regenere la DATA.
+const UNIFICAR_CANALES = { "Distribuidor": "Mayorista", "Gimnasios y Muestrarios": "Convenio Gimnasios" };
 
 // Canal forzado por CLIENTE, cuando el equipo de venta de Odoo no lo refleja
 // (gimnasios y distribuidoras cargados como "Consumidor final"). Tiene que ser
@@ -489,6 +526,13 @@ const SHEET_SEGUIMIENTO_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1v
 // Si queda vacía, el botón igual funciona pero solo guarda en ESTE navegador.
 const CONTACTOS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyiC15vtSqNf_SoMxonT_nbrFK4OGoVAz7SkO_DrxraK2uh4ErOYhbN98UglGLCuUJqDw/exec';
 const CONTACTOS_CLAVE = '';   // solo si se puso una clave en el .gs
+// 🤝 Convenios con gimnasios (GTC, BIGG, RM, CG Performance). Los datos salen del
+// tablero de convenios (Apps Script de la planilla «Panel GTC · Ventas con cupón
+// Vitalica»), que ya trae de Odoo SOLO las facturas con cupón y calcula la
+// comisión de cada convenio. Se muestran arriba de la página de este canal.
+// La clave del enlace es de SOLA LECTURA: devuelve el JSON, no abre el portal.
+const CONVENIOS_URL = 'https://script.google.com/macros/s/AKfycbz7ZaFdeg7A8yDgfDEEwMcrzhkbheqVzLafaT4rBOUFwOpZpfmF7iw-Edi_5u0w8T7e/exec?k=64f825f77dd29f596931';
+const CANAL_CONVENIOS = "Convenio Gimnasios";
 // El canal sobre el que el vendedor hace seguimiento (los mayoristas no entran).
 const CANAL_SEGUIMIENTO = "Consumidor Final";
 // Cuándo volver a escribirle: se lee la duración del producto de su propio
@@ -515,9 +559,9 @@ const DIAS_RECONTACTO = 30;
 // =====================================================================
 
 const CANAL_POR_CLIENTE = [
-  { match: "BAMBU",    canal: "Gimnasios y Muestrarios" },
-  { match: "BAMBÚ",    canal: "Gimnasios y Muestrarios" },
-  { match: "GARAGE",   canal: "Gimnasios y Muestrarios" },
+  { match: "BAMBU",    canal: "Convenio Gimnasios" },
+  { match: "BAMBÚ",    canal: "Convenio Gimnasios" },
+  { match: "GARAGE",   canal: "Convenio Gimnasios" },
   { match: "EL NEGRO", canal: "Mayorista" },
   // Venturio es cuenta mayorista, pero tiene documentos (sobre todo notas de
   // crédito) cargados con el equipo "Consumidor final".
@@ -525,7 +569,7 @@ const CANAL_POR_CLIENTE = [
 ];
 const ICONO_CANAL = {
   "Mayorista": "🏢", "Consumidor Final": "🛍️",
-  "Gimnasios y Muestrarios": "🏋️", "Sin Comisiones": "📄", "E-commerce": "🛒"
+  "Convenio Gimnasios": "🏋️", "Sin Comisiones": "📄", "E-commerce": "🛒"
 };
 
 // Un cliente es ACTIVO si compró en los últimos N meses.
@@ -651,6 +695,7 @@ async function iniciar() {
     FILAS = normalizarData(filasData);
     await cargarFichasClientes();
     await cargarContactos();
+    cargarConvenios();               // no se espera: si tarda, la sección aparece cuando llega
     METAS = leerConfig(filasConfig);
     if (rp && rp.ok) { try { PLAN = leerPlan(parseCSV(await rp.text())); } catch (e) { PLAN = null; } }
     if (!FILAS.length) throw new Error("La hoja DATA no tiene ventas. Corré «🔄 Descargar Ventas Odoo» en la planilla.");
@@ -667,6 +712,9 @@ async function iniciar() {
       "Acordate que el CSV publicado de Google tarda unos minutos en refrescar.");
   }
   aplicar();
+  // El stock del tablero de rotación se trae en segundo plano: cuando llega, el
+  // ranking de productos agrega sus columnas solo, sin recargar la página.
+  if (ROT_ESTADO !== "ok") cargarRotacion().then(() => { if (ROT) aplicar(); });
 }
 // La página publicada (/pubhtml) trae el menú de pestañas, y ahí está el gid de
 // cada una. Así no hay que copiarlos a mano ni tocar el código si cambia la hoja.
@@ -894,6 +942,9 @@ function normalizarData(filas) {
       equipo: String(r[33] || r[18] || "").trim(),   // equipo de venta tal cual está en Odoo
       // El producto viene como "[5901330026461] Creatina Polvo OLIMP...": se saca el código.
       producto: String(r[20] || "").replace(/^\[[^\]]*\]\s*/, "").trim() || "Varios",
+      // El código entre corchetes es el mismo que usa el tablero de stock como
+      // referencia: es lo que permite cruzar venta y stock sin depender del nombre.
+      codigo: (String(r[20] || "").match(/^\[([^\]]*)\]/) || ["", ""])[1].trim(),
       cantidad: aNumero(r[24]),
       descuento: aNumero(r[22]),        // % de descuento: es lo más cerca del "convenio"
       // Teléfono del cliente (columna 36). Si la planilla todavía es la vieja,
@@ -993,7 +1044,11 @@ function leerConfig(d) {
     global: aNumero(cel(3, 3)), canales: {}, vendedores: {}, vendedorCategoria: {}
   };
   for (let i = 3; i < d.length; i++) {
-    if (d[i] && d[i][5]) { const c = String(d[i][5]).trim(); if (c && CANALES.includes(c)) m.canales[c] = aNumero(d[i][6]); }
+    // El canal de CONFIG puede venir con el nombre viejo: se traduce igual que en la DATA.
+    if (d[i] && d[i][5]) {
+      const bruto = String(d[i][5]).trim(), c = UNIFICAR_CANALES[bruto] || bruto;
+      if (c && CANALES.includes(c)) m.canales[c] = aNumero(d[i][6]);
+    }
     if (d[i] && d[i][8]) { const v = String(d[i][8]).trim(); if (v) m.vendedores[v] = aNumero(d[i][9]); }
   }
   if (d[2]) {
@@ -1372,9 +1427,10 @@ function aplicarInterno() {
 
   const esObjetivos = PAGINA === "__objetivos", esNC = PAGINA === "__nc",
         esSeg = PAGINA === "__seguimiento", esPlan = PAGINA === "__plan",
-        esAudit = PAGINA === "__audit";
-  document.getElementById("vista-datos").classList.toggle("hide", esObjetivos || esNC || esSeg || esPlan || esAudit);
+        esAudit = PAGINA === "__audit", esStock = PAGINA === "__stock";
+  document.getElementById("vista-datos").classList.toggle("hide", esObjetivos || esNC || esSeg || esPlan || esAudit || esStock);
   document.getElementById("vista-audit").classList.toggle("hide", !esAudit);
+  document.getElementById("vista-stock").classList.toggle("hide", !esStock);
   document.getElementById("vista-objetivos").classList.toggle("hide", !esObjetivos);
   document.getElementById("vista-plan").classList.toggle("hide", !esPlan);
   document.getElementById("vista-nc").classList.toggle("hide", !esNC);
@@ -1384,6 +1440,7 @@ function aplicarInterno() {
     : PAGINA === "__objetivos" ? "Objetivos y Avance"
       : PAGINA === "__nc" ? "Notas de Crédito"
         : PAGINA === "__audit" ? "Auditoría de Producto"
+        : PAGINA === "__stock" ? "Stock y Rotación"
         : PAGINA === "__plan" ? "Plan Estratégico Comercial"
           : PAGINA === "__seguimiento" ? "Seguimiento de Clientes" : PAGINA;
   document.getElementById("txt-pagina").textContent = nombrePagina;
@@ -1396,6 +1453,7 @@ function aplicarInterno() {
   if (esSeg) return renderSeguimiento();
   if (esPlan) return renderPlan();
   if (esAudit) return renderAuditoria();
+  if (esStock) return renderStock();
   if (esObjetivos) return renderObjetivos(datos);
   if (esNC) return renderNC(datos);
   renderDatos(datos);
@@ -1529,6 +1587,8 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
     th("monto", "Sin IVA PYG", "num w-monto");
   if (opts.cantidad) h += th("cantidad", "Cantidad", "num w-cant");
   if (opts.facturas) h += th("facturas", "Facturas", "num w-fact");
+  if (opts.stock) h += th("stock", "Stock", "num w-cant") +
+    "<th class='num' style='width:62px' title='Para cuántos meses de venta alcanza el stock de hoy'>Meses</th>";
   h += "<th class='num w-pct'>%</th></tr></thead><tbody>";
 
   top.forEach((f, i) => {
@@ -1544,12 +1604,17 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
       "<td class='num'>" + num(f.monto) + "</td>";
     if (opts.cantidad) h += "<td class='num'>" + num(f.cantidad) + "</td>";
     if (opts.facturas) h += "<td class='num'>" + num(f.facturas) + "</td>";
+    if (opts.stock) h += (f.stock == null
+      ? "<td class='num' title='Este producto no figura en el tablero de stock'>—</td><td class='num'>—</td>"
+      : "<td class='num'>" + num(f.stock) + "</td><td class='num " + claseEstado(f.est) +
+        "' title='" + esc(ayudaEstado(f.est)) + "'>" + textoCobertura(f.cob) + "</td>");
     h += "<td class='num'>" + pct(f.monto, total).toFixed(1) + "%</td></tr>";
   });
 
   h += "<tr class='total-row'><td></td><td class='col-nombre'>Total (" + filas.length + ")</td><td class='num'>" + num(total) + "</td>";
   if (opts.cantidad) h += "<td class='num'>" + num(filas.reduce((s, f) => s + f.cantidad, 0)) + "</td>";
   if (opts.facturas) h += "<td class='num'>" + num(filas.reduce((s, f) => s + f.facturas, 0)) + "</td>";
+  if (opts.stock) h += "<td class='num'>" + num(filas.reduce((s, f) => s + (f.stock || 0), 0)) + "</td><td></td>";
   h += "<td class='num'>100%</td></tr></tbody>";
   el.innerHTML = h;
   return total;
@@ -1607,12 +1672,16 @@ function alternarClientes() {
 }
 
 function renderDatos(datos) {
+  renderConvenios();
   // Los muestrarios se muestran SIEMPRE en su propio KPI, aunque el filtro de
   // documento los esté dejando afuera: así se ve qué queda sin contar.
   const todosLosDocs = filtrar(true);
   renderKPIs(calcularKPIs(datos), calcularKPIs(todosLosDocs.filter(r => r.esRemision)));
 
-  tablaRanking("t-productos", agrupar(datos, "producto", true), "Producto", { cantidad: true, campo: "producto" });
+  // El ranking de productos lleva al lado cuánto queda y para cuántos meses
+  // alcanza: es la pregunta que seguía al ranking y obligaba a abrir otro tablero.
+  tablaRanking("t-productos", anotarStock(agrupar(datos, "producto", true)), "Producto",
+    { cantidad: true, campo: "producto", stock: ROT_ESTADO === "ok" });
   const campoCli = vistaClientes === "grupo" ? "cliente" : "clienteSucursal";
   tablaRanking("t-clientes", agrupar(datos, campoCli, true),
     vistaClientes === "grupo" ? "Cliente" : "Cliente · Sucursal",
@@ -2334,6 +2403,95 @@ async function cargarContactos() {
   leerLocal();
 }
 
+// ------------------------------------------------- convenios con gimnasios
+let CONVENIOS = null;      // null = todavía no llegó · { error } si no se pudo leer
+async function cargarConvenios() {
+  if (!CONVENIOS_URL) return;
+  try {
+    const res = await fetch(CONVENIOS_URL + (CONVENIOS_URL.includes("?") ? "&" : "?") + "cb=" + Date.now());
+    const d = await res.json();
+    if (!d || !Array.isArray(d.filas)) throw new Error("respuesta sin datos");
+    CONVENIOS = d;
+  } catch (e) {
+    console.warn("No se pudieron leer los convenios:", e.message);
+    CONVENIOS = { error: e.message };
+  }
+  if (PAGINA === CANAL_CONVENIOS) renderConvenios();
+}
+function convenioEnPeriodo(f) {
+  const fecha = String(f.fecha || "");
+  if (filtros.desde || filtros.hasta) {
+    return (!filtros.desde || fecha >= filtros.desde) && (!filtros.hasta || fecha <= filtros.hasta);
+  }
+  if (filtros.anio && fecha.slice(0, 4) !== String(filtros.anio)) return false;
+  if (filtros.mes && +fecha.slice(5, 7) !== +filtros.mes) return false;
+  return true;
+}
+function renderConvenios() {
+  const el = document.getElementById("convenios-gym");
+  if (!el) return;
+  const ver = PAGINA === CANAL_CONVENIOS;
+  el.classList.toggle("hide", !ver);
+  if (!ver) return;
+  const titulo = '<h3>🤝 Convenios con gimnasios · facturas con cupón <small>';
+  if (!CONVENIOS) { el.innerHTML = '<div class="card">' + titulo + '</small></h3><div class="empty">Cargando convenios…</div></div>'; return; }
+  if (CONVENIOS.error) { el.innerHTML = '<div class="card">' + titulo + '</small></h3><div class="empty">No se pudieron leer los convenios (' + esc(CONVENIOS.error) + ').</div></div>'; return; }
+
+  const conIva = CONVENIOS.base === "Con IVA";
+  const base = f => conIva ? f.conIva : f.sinIva;
+  const filas = CONVENIOS.filas.filter(convenioEnPeriodo);
+  const periodo = (filtros.desde || filtros.hasta)
+    ? "del " + (filtros.desde || "inicio") + " al " + (filtros.hasta || "hoy")
+    : (filtros.mes ? MESES[+filtros.mes] + " " : "Año ") + filtros.anio;
+
+  const res = CONVENIOS.convenios.map(c => {
+    const fs = filas.filter(f => f.convenio === c.nombre);
+    const fac = fs.filter(f => f.tipo === "Factura");
+    const monto = fs.reduce((s, f) => s + base(f), 0);
+    return { c, n: fac.length, gym: fac.filter(f => f.origen === "Cupón").length,
+             nutri: fac.filter(f => f.nutri && f.origen !== "Cupón").length,
+             monto, com: monto * c.comision };
+  });
+  const tot = k => res.reduce((s, r) => s + r[k], 0);
+  const pctCom = c => Math.round(c.comision * 100) + "%";
+
+  const tabla = '<thead><tr><th class="col-nombre">Convenio</th><th class="num">Facturas</th>' +
+    '<th class="num">Cupón del gym</th><th class="num">Cupón nutricionista</th>' +
+    '<th class="num w-monto">' + (conIva ? "Con IVA" : "Sin IVA") + ' PYG</th><th class="num">Comisión</th><th class="num w-monto">A pagar PYG</th></tr></thead><tbody>' +
+    res.map(r => '<tr><td class="col-nombre">' + esc(r.c.nombre) + '</td><td class="num">' + r.n + '</td><td class="num">' + r.gym +
+      '</td><td class="num">' + r.nutri + '</td><td class="num">' + num(r.monto) + '</td><td class="num">' + pctCom(r.c) +
+      '</td><td class="num">' + num(r.com) + '</td></tr>').join("") +
+    '<tr class="total-row"><td class="col-nombre">Total</td><td class="num">' + tot("n") + '</td><td class="num">' + tot("gym") +
+    '</td><td class="num">' + tot("nutri") + '</td><td class="num">' + num(tot("monto")) + '</td><td class="num"></td><td class="num">' +
+    num(tot("com")) + '</td></tr></tbody>';
+
+  const comDe = f => { const c = CONVENIOS.convenios.find(x => x.nombre === f.convenio); return c ? base(f) * c.comision : 0; };
+  const det = filas.slice().sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+  const detalle = det.length
+    ? '<thead><tr><th>Fecha</th><th>Comprobante</th><th class="col-nombre">Cliente</th><th>Convenio</th><th>Sucursal</th><th>Cupón</th>' +
+      '<th class="num w-monto">' + (conIva ? "Con IVA" : "Sin IVA") + '</th><th class="num w-monto">Comisión</th></tr></thead><tbody>' +
+      det.map(f => '<tr><td>' + String(f.fecha).split("-").reverse().join("/") + '</td><td>' + esc(f.comprobante) +
+        (f.tipo !== "Factura" ? " ↩" : "") + '</td><td class="col-nombre">' + esc(f.cliente) + '</td><td>' + esc(f.convenio) +
+        '</td><td>' + esc(f.sucursal) + '</td><td>' + (f.origen === "Cupón" ? esc(f.codigo || "Gimnasio") : "Nutricionista") +
+        '</td><td class="num">' + num(base(f)) + '</td><td class="num">' + num(comDe(f)) + '</td></tr>').join("") + '</tbody>'
+    : '<tbody><tr><td class="empty">No hay facturas con cupón de convenio en ' + esc(periodo) + '.</td></tr></tbody>';
+
+  el.innerHTML =
+    '<div class="kpi-row">' +
+      kpi("Comisión convenios", gs(tot("com")), "a pagar a los gimnasios · " + esc(periodo)) +
+      kpi("Facturado con cupón", gs(tot("monto")), conIva ? "con IVA" : "sin IVA") +
+      kpi("Facturas con cupón", num(tot("n")), tot("gym") + " del gimnasio · " + tot("nutri") + " de nutricionista") +
+    '</div>' +
+    '<div class="card">' + titulo + esc(periodo) + (CONVENIOS.actualizado ? " · datos de Odoo al " + esc(CONVENIOS.actualizado) : "") +
+      '</small></h3><div class="tbl-scroll"><table>' + tabla + '</table></div>' +
+      '<div class="note" style="margin-top:8px">Solo facturas donde se usó un cupón: el del gimnasio (GTCLUQ, BIGGCEN, RMLAM…) ' +
+      'o uno de nutricionista con el cliente marcado como del gimnasio. Muchas entran por el canal Consumidor Final, ' +
+      'así que estos montos <b>no</b> son parte del total de esta página. Comisión sobre el total ' + (conIva ? "con" : "sin") +
+      ' IVA; las notas de crédito restan.</div></div>' +
+    '<div class="card"><h3>Facturas con cupón de convenio <small>' + det.length + ' comprobantes</small></h3>' +
+      '<div class="tbl-scroll" style="max-height:360px"><table>' + detalle + '</table></div></div>';
+}
+
 function contactoDe(cliente) { return CONTACTOS[claveContacto(cliente)] || null; }
 
 // --- ventanita para registrar el contacto ---
@@ -2444,6 +2602,385 @@ function donut(id, filas, campo) {
       }
     }]
   });
+}
+
+// ============================================ Stock y Rotación (tablero ABC)
+/**
+ * Por qué está acá: «esto que se vende, ¿lo tengo?» obligaba a abrir dos
+ * tableros y comparar a mano. El tablero de Stock y Rotación publica su propio
+ * datos.js; este informe lo lee tal cual y lo muestra al lado de la venta, con
+ * los filtros de arriba ya aplicados. No se recalcula nada: el número sigue
+ * siendo el que publica el otro tablero, con su fecha a la vista. Si no se
+ * puede leer, el informe funciona igual y lo avisa.
+ *
+ * Dos cosas que conviene tener claras al leer esta pestaña:
+ *  · El STOCK no es por canal: es el de la empresa. Al elegir un canal cambian
+ *    las unidades vendidas (y con eso la cobertura), no el stock.
+ *  · La ventana de venta la fija el otro tablero (los últimos meses cerrados).
+ *    Los filtros de año, mes y fechas de arriba NO la mueven.
+ */
+const ROT_TABLERO = "https://ti-camping44.github.io/ROTACION-ABC-VITALICA/";
+const ROT_FUENTES = [
+  "../ROTACION-ABC-VITALICA/datos.js",              // los dos tableros en el mismo GitHub Pages
+  ROT_TABLERO + "datos.js",
+  "https://raw.githubusercontent.com/TI-Camping44/ROTACION-ABC-VITALICA/main/datos.js"
+];
+let ROT = null, ROT_ESTADO = "";                    // "" · "cargando" · "ok" · "error"
+
+/* Las mismas reglas con las que el Apps Script clasifica una factura por su
+   equipo de ventas de Odoo (MAPEO_CANALES en Odoo_Vitalica.gs). El tablero de
+   rotación guarda el equipo crudo ("Mayorista Vitalica", "Sales"...), así que
+   acá se traduce igual que allá. Si se cambian las reglas en el Apps Script,
+   hay que cambiarlas también acá. */
+const MAPEO_CANAL_ODOO = [
+  ["MUESTRARIO", "Convenio Gimnasios"], ["GIMNASIO", "Convenio Gimnasios"],
+  ["MAYORISTA", "Mayorista"], ["DISTRIBUIDOR", "Mayorista"], ["DISTRIBUCION", "Mayorista"],
+  ["CONSUMIDOR FINAL", "Consumidor Final"], ["SALES", "Consumidor Final"],
+  ["SIN COMISION", "Sin Comisiones"], ["E-COMMERCE", "E-commerce"], ["ECOMMERCE", "E-commerce"]
+];
+function canalDelEquipo(equipo) {
+  const t = norm(equipo);
+  for (let i = 0; i < MAPEO_CANAL_ODOO.length; i++) {
+    if (t.includes(MAPEO_CANAL_ODOO[i][0])) return MAPEO_CANAL_ODOO[i][1];
+  }
+  return "Consumidor Final";                        // el mismo canal por defecto del Apps Script
+}
+
+async function cargarRotacion() {
+  if (ROT || ROT_ESTADO === "cargando") return ROT;
+  ROT_ESTADO = "cargando";
+  for (let i = 0; i < ROT_FUENTES.length; i++) {
+    const url = ROT_FUENTES[i];
+    try {
+      const ctrl = new AbortController();
+      const reloj = setTimeout(() => ctrl.abort(), 20000);
+      const r = await fetch(url + (url.includes("?") ? "&" : "?") + "cb=" + Date.now(), { signal: ctrl.signal });
+      clearTimeout(reloj);
+      if (!r.ok) continue;
+      const txt = await r.text();
+      if (txt.indexOf("ROT_ART") < 0) continue;     // no es el archivo que esperamos
+      const d = Function('"use strict";' + txt + "\nreturn DATOS;")();
+      if (!d || !d.ROT_ART || !d.ROT_ART.length) continue;
+      ROT = prepararRotacion(d);
+      ROT_ESTADO = "ok";
+      return ROT;
+    } catch (e) { /* se prueba la fuente siguiente */ }
+  }
+  ROT_ESTADO = "error";
+  return null;
+}
+function reintentarRotacion() { ROT = null; ROT_ESTADO = ""; renderStock(); }
+
+function prepararRotacion(d) {
+  const art = [], porRef = {}, porNombre = {};
+  (d.ROT_ART || []).forEach(a => {
+    const x = {
+      ref: String(a[0] || "").trim(), nombre: String(a[1] || "").trim(),
+      familia: String(a[2] || "").trim() || "Sin familia",
+      valor: a[4] || 0, vendidas: a[5] || 0, stock: a[6] || 0,
+      cat: a[7] || "NC", canales: a[8] || {}, meses: a[9] || []
+    };
+    if (!x.nombre) return;
+    art.push(x);
+    if (x.ref && !porRef[x.ref]) porRef[x.ref] = x;
+    const n = norm(x.nombre);
+    if (!porNombre[n]) porNombre[n] = x;
+  });
+  // Dónde está parado el stock de cada artículo, depósito por depósito.
+  const depos = {};
+  (d.ARTICULOS || []).forEach(a => {
+    const k = String(a[0] || "").trim() || norm(a[1]);
+    if (!(a[5] > 0)) return;
+    (depos[k] = depos[k] || []).push({ dep: String(a[3] || ""), q: a[5] || 0 });
+  });
+  Object.keys(depos).forEach(k => depos[k].sort((p, q) => q.q - p.q));
+  return {
+    generado: d.GENERADO || "", art: art, porRef: porRef, porNombre: porNombre, depos: depos,
+    mesesRot: d.MESES_ROT || 6, mesesVenta: d.MESES_VENTA || [],
+    umb: d.UMBRALES || { min: 1, max: 6 }
+  };
+}
+
+// Un artículo del tablero, a partir de una fila de ventas (primero por código).
+function rotDe(codigo, nombre) {
+  if (!ROT) return null;
+  return (codigo && ROT.porRef[String(codigo).trim()]) || ROT.porNombre[norm(nombre)] || null;
+}
+// Unidades vendidas del artículo dentro de los canales elegidos arriba.
+function vendidasEnCanales(x, canales) {
+  if (!canales || !canales.length) return x.vendidas;
+  let t = 0;
+  Object.keys(x.canales || {}).forEach(k => {
+    if (canales.includes(canalDelEquipo(k))) {
+      const v = x.canales[k];
+      t += (v && typeof v === "object") ? (v.q || 0) : (v || 0);
+    }
+  });
+  return t;
+}
+// Los canales que están pesando sobre la vista: los del filtro y, si se está
+// parado en la página de un canal, también ese.
+function canalesActivos() {
+  const c = (filtros.canales || []).slice();
+  if (PAGINA && PAGINA.indexOf("__") !== 0 && c.indexOf(PAGINA) < 0) c.push(PAGINA);
+  return c;
+}
+// Para cuántos meses de venta alcanza el stock. -1 = no se puede calcular.
+function coberturaMeses(stock, vendidas) {
+  if (!ROT || stock <= 0) return -1;
+  if (vendidas <= 0) return Infinity;
+  return stock / (vendidas / ROT.mesesRot);
+}
+function estadoStock(stock, vendidas) {
+  if (!ROT) return "";
+  if (stock <= 0) return vendidas > 0 ? "agotado" : "sin";
+  if (vendidas <= 0) return "parado";
+  const cob = coberturaMeses(stock, vendidas);
+  if (cob < ROT.umb.min) return "reponer";
+  if (cob > ROT.umb.max) return "exceso";
+  return "ok";
+}
+function etiquetasStock() {
+  const u = (ROT && ROT.umb) || { min: 1, max: 6 };
+  return {
+    agotado: { lab: "Agotado", cls: "est-mal", ayuda: "vendió en la ventana y ya no le queda stock" },
+    reponer: { lab: "Reponer", cls: "est-at", ayuda: "el stock alcanza para menos de " + u.min + " mes de venta" },
+    ok: { lab: "Al día", cls: "est-ok", ayuda: "cobertura entre " + u.min + " y " + u.max + " meses" },
+    exceso: { lab: "Exceso", cls: "est-exc", ayuda: "el stock alcanza para más de " + u.max + " meses de venta" },
+    parado: { lab: "Parado", cls: "est-nd", ayuda: "tiene stock y no vendió nada en la ventana" },
+    sin: { lab: "Sin movimiento", cls: "est-nd", ayuda: "sin stock y sin ventas en la ventana" }
+  };
+}
+// El mismo estado, en texto de color, para donde no entra la píldora.
+const CLASE_ESTADO = { agotado: "e-mal", reponer: "e-at", ok: "e-ok", exceso: "e-exc", parado: "e-nd", sin: "e-nd" };
+function claseEstado(est) { return CLASE_ESTADO[est] || "e-nd"; }
+function ayudaEstado(est) {
+  const e = etiquetasStock()[est];
+  return e ? e.lab + ": " + e.ayuda : "";
+}
+function pildoraStock(est) {
+  const e = etiquetasStock()[est];
+  if (!e) return '<span style="color:var(--muted)">—</span>';
+  return '<span class="est ' + e.cls + '" title="' + esc(e.ayuda) + '">' + esc(e.lab) + '</span>';
+}
+function textoCobertura(cob) {
+  if (cob < 0) return '<span style="color:var(--muted)">—</span>';
+  if (cob === Infinity) return '<span style="color:var(--nd)">sin ventas</span>';
+  return cob >= 100 ? "+99" : cob.toFixed(1);
+}
+// Antigüedad del dato del tablero, en días (-1 si no se entiende la fecha).
+function diasDelTablero() {
+  const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec((ROT && ROT.generado) || "");
+  if (!m) return -1;
+  const f = new Date(+m[3], +m[2] - 1, +m[1]);
+  return Math.floor((new Date() - f) / 86400000);
+}
+
+/* Las dos columnas que se cuelan en el ranking de productos del resumen: el
+   stock de cada uno y para cuántos meses alcanza, sin salir de la página. */
+function anotarStock(filas) {
+  if (ROT_ESTADO !== "ok") return filas;
+  const canales = canalesActivos();
+  filas.forEach(f => {
+    const x = ROT.porNombre[norm(f.clave)];
+    if (!x) { f.stock = null; f.cob = null; f.est = ""; return; }
+    const vendidas = vendidasEnCanales(x, canales);
+    f.stock = x.stock;
+    f.cob = coberturaMeses(x.stock, vendidas);
+    f.est = estadoStock(x.stock, vendidas);
+  });
+  return filas;
+}
+
+let filtroStock = "todos", buscaStock = "", ordenStock = { col: "vendidas", dir: -1 };
+function verStock(g) { filtroStock = g; renderStock(); }
+function buscarStock(t) { buscaStock = t; renderStock(); }
+function ordenarStock(col) {
+  if (ordenStock.col === col) ordenStock.dir = -ordenStock.dir;
+  else ordenStock = { col: col, dir: col === "nombre" ? 1 : -1 };
+  renderStock();
+}
+
+function renderStock() {
+  const cont = document.getElementById("vista-stock");
+  const enlace = '<a href="' + ROT_TABLERO + '" target="_blank" rel="noopener">abrir el tablero completo ↗</a>';
+
+  if (ROT_ESTADO !== "ok") {
+    cont.innerHTML = ROT_ESTADO === "error"
+      ? '<div class="card"><h3>Stock y Rotación</h3><div class="note">No se pudo leer el tablero de stock ' +
+        'desde este informe. Puede ser la conexión o que el tablero esté publicándose en este momento. ' +
+        '<button class="btn btn-sec" style="margin-left:8px" onclick="reintentarRotacion()">Reintentar</button> ' +
+        '<br>Mientras tanto se puede ' + enlace + '.</div></div>'
+      : '<div class="card"><div class="empty">Trayendo el stock del tablero de rotación…</div></div>';
+    if (ROT_ESTADO !== "cargando") {
+      cargarRotacion().then(() => { if (PAGINA === "__stock") renderStock(); else if (ROT) aplicar(); });
+    }
+    return;
+  }
+
+  const canales = canalesActivos();
+  const datos = filtrar();
+
+  /* Qué productos se muestran: si arriba hay algún filtro que achica la lista
+     de productos (categoría, producto, cliente o vendedor), se muestran los de
+     la venta que se está viendo. Si no hay ninguno, todo el catálogo del
+     tablero, también lo que tiene stock y no vendió nada. */
+  const achica = !!(filtros.productos.length || filtros.categorias.length ||
+                    filtros.clientes.length || filtros.cliente || filtros.vendedores.length);
+  let claves = null;
+  if (achica) {
+    claves = new Set();
+    datos.forEach(r => { if (r.codigo) claves.add(r.codigo); claves.add(norm(r.producto)); });
+  }
+
+  const q = norm(buscaStock);
+  const todas = ROT.art
+    .filter(x => !claves || claves.has(x.ref) || claves.has(norm(x.nombre)))
+    .map(x => {
+      const vendidas = vendidasEnCanales(x, canales);
+      return {
+        ref: x.ref, nombre: x.nombre, familia: x.familia, cat: x.cat,
+        vendidas: vendidas, stock: x.stock, valor: x.valor,
+        cob: coberturaMeses(x.stock, vendidas), est: estadoStock(x.stock, vendidas),
+        depos: ROT.depos[x.ref || norm(x.nombre)] || []
+      };
+    })
+    .filter(f => !q || norm(f.nombre + " " + f.ref + " " + f.familia).includes(q));
+
+  const GRUPOS = [
+    { k: "todos", lab: "Todos", f: () => true },
+    { k: "faltante", lab: "Falta reponer", f: f => f.est === "agotado" || f.est === "reponer" },
+    { k: "exceso", lab: "Exceso de stock", f: f => f.est === "exceso" },
+    { k: "parado", lab: "Parados", f: f => f.est === "parado" },
+    { k: "ok", lab: "Al día", f: f => f.est === "ok" }
+  ];
+
+  // ----- KPIs (sobre todo lo que entra en la vista, antes de los botones)
+  const stockTotal = todas.reduce((t, f) => t + f.stock, 0);
+  const vendTotal = todas.reduce((t, f) => t + f.vendidas, 0);
+  const valorTotal = todas.reduce((t, f) => t + f.valor, 0) * 1e6;
+  const cuenta = k => todas.filter(GRUPOS.find(g => g.k === k).f).length;
+  const unidades = k => todas.filter(GRUPOS.find(g => g.k === k).f).reduce((t, f) => t + f.stock, 0);
+  const cobGlobal = vendTotal > 0 ? stockTotal / (vendTotal / ROT.mesesRot) : -1;
+  const dias = diasDelTablero();
+
+  const ventana = ROT.mesesVenta.length
+    ? ROT.mesesVenta[0] + " a " + ROT.mesesVenta[ROT.mesesVenta.length - 1]
+    : "los últimos " + ROT.mesesRot + " meses";
+
+  let h = '<div class="kpi-row">' +
+    kpi("Unidades en stock", num(stockTotal), todas.length + " productos · " + ROT.art.length + " en el tablero") +
+    kpi("Valor del stock", gs(valorTotal), "al costo, como lo valoriza el tablero") +
+    kpi("Falta reponer", num(cuenta("faltante")),
+        "productos agotados o con menos de " + ROT.umb.min + " mes", cuenta("faltante") > 0) +
+    kpi("Exceso de stock", num(cuenta("exceso")), num(unidades("exceso")) + " unidades quietas") +
+    kpi("Cobertura general", cobGlobal < 0 ? "—" : cobGlobal.toFixed(1) + " meses",
+        "con la venta de " + ventana) +
+    kpi("Vendidas en la ventana", num(vendTotal),
+        canales.length ? "sólo " + canales.join(" + ") : "todos los canales") +
+    '</div>';
+
+  // ----- de dónde sale esto
+  h += '<div class="note">Estos números salen del <b>tablero de Stock y Rotación</b>, ' +
+    'generado el <b>' + esc(ROT.generado) + '</b>' +
+    (dias > 2 ? ' — <b>hace ' + dias + ' días</b>, conviene actualizarlo' : "") + '. ' +
+    'La venta de la ventana es la <b>entregada</b> (' + esc(ventana) + '), no la facturada: por eso ' +
+    'puede no coincidir con los montos de arriba, y la pestaña <b>🔍 Auditoría de Producto</b> muestra ' +
+    'producto por producto de dónde sale cada número. ' +
+    '<b>El stock no es por canal</b>: es el de toda la empresa. Al elegir un canal cambian las unidades ' +
+    'vendidas y la cobertura, no el stock. Los filtros de año, mes y fechas no mueven la ventana. ' +
+    'Para el detalle por depósito, lote y gimnasio está el ' + enlace + '.</div>';
+
+  // ----- botonera + buscador
+  h += '<div class="card"><h3>Qué hay de cada producto <small>' +
+    (achica ? "limitado a los productos de la venta que estás viendo" : "catálogo completo del tablero") +
+    '</small></h3><div class="filtros-stock">' +
+    GRUPOS.map(g => '<button class="btn btn-sec' + (filtroStock === g.k ? " on" : "") +
+      '" onclick="verStock(\'' + g.k + '\')">' + g.lab + " (" + todas.filter(g.f).length + ")</button>").join("") +
+    '<input type="text" id="q-stock" placeholder="buscar producto, código o familia..." ' +
+    'value="' + esc(buscaStock) + '" oninput="buscarStock(this.value)" style="min-width:230px">' +
+    '</div>';
+
+  const grupo = GRUPOS.find(g => g.k === filtroStock) || GRUPOS[0];
+  let vis = todas.filter(grupo.f);
+  const ord = ordenStock;
+  vis = vis.slice().sort((a, b) => {
+    if (ord.col === "nombre") return ord.dir * String(a.nombre).localeCompare(String(b.nombre), "es");
+    const va = a[ord.col] === Infinity ? 1e9 : (a[ord.col] || 0);
+    const vb = b[ord.col] === Infinity ? 1e9 : (b[ord.col] || 0);
+    return ord.dir * (va - vb);
+  });
+
+  if (!vis.length) {
+    h += '<div class="empty">No hay productos en este grupo con los filtros puestos.</div></div>';
+    cont.innerHTML = h;
+    return;
+  }
+
+  const th = (col, txt, cls, ayuda) => {
+    const activa = ord.col === col;
+    return "<th class='sortable " + (cls || "") + (activa ? " sorted" : "") + "' onclick=\"ordenarStock('" + col +
+      "')\" title='" + esc(ayuda || ("Ordenar por " + txt)) + "'>" + txt +
+      "<span class='arrow'>" + (activa ? (ord.dir < 0 ? "▼" : "▲") : "▽") + "</span></th>";
+  };
+
+  // Para saber si tocar la fila lleva a algún lado: el producto tiene que
+  // existir en la venta de este informe.
+  const enVenta = new Set(FILAS.map(r => norm(r.producto)));
+
+  h += '<div class="tbl-scroll" style="max-height:620px"><table id="t-stock"><thead><tr>' +
+    "<th class='idx'>#</th>" + th("nombre", "Producto", "col-nombre") +
+    "<th style='width:46px' title='Clase del tablero: A potenciar, B mantener, C liquidar, N nuevo'>ABC</th>" +
+    th("vendidas", "Vendidas", "num w-cant", "Unidades entregadas en la ventana" +
+       (canales.length ? ", sólo en " + canales.join(" + ") : "")) +
+    th("stock", "Stock", "num w-cant", "Unidades en todos los depósitos, hoy") +
+    th("cob", "Cobertura", "num", "Para cuántos meses de venta alcanza el stock") +
+    "<th style='width:124px;padding-left:12px'>Estado</th>" +
+    "<th class='col-nombre' style='width:190px'>Dónde está</th>" +
+    "</tr></thead><tbody>";
+
+  const maxCob = ROT.umb.max;
+  vis.forEach((f, i) => {
+    const tocable = enVenta.has(norm(f.nombre));
+    const click = tocable
+      ? " class='clickable' onclick='filtrarPor(\"producto\", " +
+        JSON.stringify(f.nombre).replace(/'/g, "&#39;").replace(/"/g, "&quot;") +
+        ")' title='Ver las ventas de este producto'"
+      : "";
+    const anchoCob = f.cob < 0 ? 0 : Math.min(100, (f.cob === Infinity ? maxCob * 2 : f.cob) / (maxCob * 2) * 100);
+    const colorCob = f.est === "exceso" ? "var(--exc)" : f.est === "reponer" || f.est === "agotado"
+      ? "var(--at)" : f.est === "ok" ? "var(--ok)" : "#c3ccd6";
+    const donde = f.depos.length
+      ? f.depos.slice(0, 2).map(d => esc(d.dep) + ": " + num(d.q)).join("<br>") +
+        (f.depos.length > 2 ? '<span class="sub-prod">y ' + (f.depos.length - 2) + " depósitos más</span>" : "")
+      : '<span style="color:var(--muted)">—</span>';
+
+    h += "<tr" + click + "><td class='idx'>" + (i + 1) + "</td>" +
+      "<td class='col-nombre' title='" + esc(f.nombre) + "'><span class='txt'>" + esc(f.nombre) + "</span>" +
+      '<span class="sub-prod">' + esc(f.familia) + (f.ref ? " · " + esc(f.ref) : "") + "</span></td>" +
+      "<td><span class='abc abc-" + esc(f.cat || "NC") + "'>" + esc(f.cat || "–") + "</span></td>" +
+      "<td class='num'>" + num(f.vendidas) + "</td>" +
+      "<td class='num'>" + num(f.stock) + "</td>" +
+      "<td class='num'>" + textoCobertura(f.cob) +
+        '<div class="barra-cob"><i style="width:' + anchoCob.toFixed(0) + "%;background:" + colorCob + '"></i></div></td>' +
+      "<td>" + pildoraStock(f.est) + "</td>" +
+      "<td class='col-nombre' style='font-size:10.5px'>" + donde + "</td></tr>";
+  });
+
+  const tot = vis.reduce((t, f) => ({ v: t.v + f.vendidas, s: t.s + f.stock }), { v: 0, s: 0 });
+  h += "<tr class='total-row'><td></td><td class='col-nombre'>Total (" + vis.length + ")</td><td></td>" +
+    "<td class='num'>" + num(tot.v) + "</td><td class='num'>" + num(tot.s) + "</td>" +
+    "<td class='num'>" + (tot.v > 0 ? (tot.s / (tot.v / ROT.mesesRot)).toFixed(1) : "—") + "</td>" +
+    "<td></td><td></td></tr></tbody></table></div>";
+
+  h += '<div class="leyenda-plan">' +
+    Object.keys(etiquetasStock()).map(k => {
+      const e = etiquetasStock()[k];
+      return '<span><span class="est ' + e.cls + '">' + e.lab + "</span> " + esc(e.ayuda) + "</span>";
+    }).join("") +
+    "</div></div>";
+
+  cont.innerHTML = h;
 }
 
 // ------------------------------------------------ Auditoría de producto

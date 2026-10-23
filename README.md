@@ -42,8 +42,28 @@ Réplica de lo que hoy tiene el informe de Looker Studio, más el módulo de obj
   (los que compraron en los últimos 3 meses) y notas de crédito.
 - **Tablas**: mejores productos, mejores clientes, mejores vendedores, ventas por
   mes, mejores categorías y canales de venta, todas con % de participación.
-- **Páginas**: Resumen + una por canal (Mayorista, Consumidor Final, Gimnasios y
-  Muestrarios, Sin Comisiones, E-commerce) + Notas de Crédito + Objetivos.
+- **Páginas**: Resumen + una por canal (Mayorista, Consumidor Final, Convenio
+  Gimnasios, Sin Comisiones, E-commerce) + Seguimiento + Objetivos + Plan
+  Estratégico + Stock y Rotación + Auditoría de Producto + Notas de Crédito.
+- **Convenios con gimnasios**: dentro de la página del canal **Convenio
+  Gimnasios** (antes «Gimnasios y Muestrarios»: ahí ya no hay muestrarios) se
+  muestran los convenios con GTC, BIGG, RM y CG Performance. Los datos salen del
+  Apps Script de la planilla «Panel GTC · Ventas con cupón Vitalica», que trae de
+  Odoo **sólo las facturas con cupón** (el del gimnasio o el de nutricionista de
+  un cliente del gimnasio) y calcula la comisión. Muchas de esas facturas entran
+  por el canal Consumidor Final, así que **no** suman al total de la página: van
+  como sección aparte. La constante es `CONVENIOS_URL`; la clave del enlace es de
+  sola lectura.
+- **Stock y Rotación**: el informe lee el `datos.js` que publica el tablero
+  [ROTACION-ABC-VITALICA](https://github.com/TI-Camping44/ROTACION-ABC-VITALICA)
+  y lo muestra acá mismo: cuánto queda de cada producto, su clase ABC, para
+  cuántos meses alcanza y dónde está parado el stock. El ranking de productos
+  del resumen también lleva las columnas **Stock** y **Meses**. Se cruza por el
+  código del producto (el de los corchetes, que es la referencia del tablero) y
+  el filtro de canal traduce los equipos de Odoo con las mismas reglas del Apps
+  Script. El stock **no es por canal**: al filtrar cambian las unidades vendidas
+  y la cobertura, no el stock. Si el tablero no se puede leer, el informe
+  funciona igual y lo avisa.
 - **Gráficos arriba**: evolución de ventas (por mes en el año completo, por día al
   elegir un mes) y las dos tortas de contribución por canal y por categoría.
 - **Filtros**: año, mes, vendedor, canal, categoría, cliente y rango de fechas.
@@ -65,10 +85,10 @@ Vitálica vende suplementos, así que no hay marcas, armas ni municiones:
 |---|---|---|
 | Eje del análisis | Marca del producto | **Categoría** (Proteínas, Creatinas, Pre Entrenos, Vitaminas y Minerales, Ácidos Grasos, Bebidas Isotónicas, Salud Articular) |
 | Importes | Con IVA | **Sin IVA** |
-| Canales | Salón, Online, E-commerce, Mayoristas, Venta Externa, Directorio, Reparaciones | **Mayorista** (unifica Mayorista Vitalica + Distribuidor)**, Consumidor Final, Gimnasios y Muestrarios, Sin Comisiones, E-commerce** |
+| Canales | Salón, Online, E-commerce, Mayoristas, Venta Externa, Directorio, Reparaciones | **Mayorista** (unifica Mayorista Vitalica + Distribuidor)**, Consumidor Final, Convenio Gimnasios, Sin Comisiones, E-commerce** |
 | Empresa en Odoo | 1 | **2** |
 | Reglas propias | Contimarket, TUPI/PORTER, exclusiones de personas | Excluye Merchandising y Muestrario, y los clientes Bambu Group y Garage (remisiones/cotizaciones) |
-| Facturas sin vendedor | No suman | **Sí suman** (aparecen como "Sin Vendedor": es venta real, ej. Gimnasios y Muestrarios) |
+| Facturas sin vendedor | No suman | **Sí suman** (aparecen como "Sin Vendedor": es venta real, ej. Convenio Gimnasios) |
 
 ## Puesta en marcha
 
