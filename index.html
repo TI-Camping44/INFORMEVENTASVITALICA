@@ -2530,10 +2530,12 @@ function renderConvenios() {
     : '<tbody><tr><td class="empty">No hay facturas con cupón de convenio en ' + esc(periodo) + '.</td></tr></tbody>';
 
   el.innerHTML =
+    // El orden es el del razonamiento: cuánto se facturó, en cuántas facturas,
+    // y recién al final cuánto hay que pagarle al gimnasio.
     '<div class="kpi-row">' +
-      kpi("Comisión convenios", gs(tot("com")), "a pagar a los gimnasios · " + esc(periodo)) +
       kpi("Facturado con cupón", gs(tot("monto")), conIva ? "con IVA" : "sin IVA") +
       kpi("Facturas con cupón", num(tot("n")), tot("gym") + " del gimnasio · " + tot("nutri") + " de nutricionista") +
+      kpi("Comisión convenios", gs(tot("com")), "a pagar a los gimnasios · " + esc(periodo)) +
     '</div>' +
     '<div class="card">' + titulo + esc(periodo) + (CONVENIOS.actualizado ? " · datos de Odoo al " + esc(CONVENIOS.actualizado) : "") +
       '</small></h3><div class="tbl-scroll"><table>' + tabla + '</table></div>' +
