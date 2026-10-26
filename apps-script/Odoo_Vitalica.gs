@@ -107,6 +107,21 @@ const CATEGORIAS_EXCLUIDAS = ["MERCHANDISING", "MUESTRARIO"];
 // 🚫 Productos/descripciones que no se traen.
 const PRODUCTOS_EXCLUIDOS = [];
 
+// 🚫 Notas de crédito que revierten una factura que este informe NO tiene:
+//    porque es de un año anterior o porque quedó cancelada. Sin su factura, la
+//    nota deja un agujero que nunca fue venta de este año. En Vitálica eran 18
+//    notas del 28/02/2026 a Garage Cross por ₲62 millones, que hundían el canal
+//    Convenio Gimnasios: el canal mostraba ₲1,3 millones de venta contra ₲62
+//    millones de devoluciones. Las notas que SÍ revierten una factura del
+//    período se siguen trayendo y se restan como siempre.
+const EXCLUIR_NC_SIN_SU_FACTURA = true;
+
+// 🚫 Válvula manual: si alguna nota de crédito vieja no quedó enlazada a su
+//    factura en Odoo (se cargó a mano, sin usar "Revertir"), la regla de arriba
+//    no la puede detectar. Se la saca por número acá.
+//    Ejemplo: ["001-001-0000001", "001-001-0000002"]
+const NC_EXCLUIDAS = [];
+
 // 🚫 Clientes que no se traen. Vacío = se traen todos.
 //    Bambu, Garage Cross, GTC Bigg y Lichton/Fitway SÍ tienen que sumar:
 //    son muestrarios, así que no van acá.
@@ -393,6 +408,7 @@ function actualizarDatosOdoo_(silencioso) {
   ]], { fields: ["date", "quantity", "name", "price_unit", "discount", "price_total", "price_subtotal", "balance", "amount_currency", "product_id", "partner_id", "move_id", "currency_id", "product_uom_id"], limit: 80000 });
 
   var rowsOut = [];
+  var nNcHuerfanas = 0;          // notas de crédito que revierten facturas de otro período
   if (lines && lines.length > 0) {
     var moveIds = []; var productIds = []; var partnerIds = [];
     lines.forEach(l => { if (l.move_id) moveIds.push(l.move_id[0]); if (l.product_id) productIds.push(l.product_id[0]); if (l.partner_id) partnerIds.push(l.partner_id[0]); });
@@ -405,7 +421,7 @@ function actualizarDatosOdoo_(silencioso) {
         if (!CAMPO_ETIQUETA && (lbl === "ETIQUETAS" || (fn.indexOf("x_studio") === 0 && fn.toUpperCase().indexOf("ETIQUETA") >= 0))) CAMPO_ETIQUETA = fn;
       });
     } catch (e) { CAMPO_ETIQUETA = ""; }
-    var _moveFields = ["invoice_user_id", "team_id", "move_type", "name", "invoice_date", "invoice_date_due", "state"];
+    var _moveFields = ["invoice_user_id", "team_id", "move_type", "name", "invoice_date", "invoice_date_due", "state", "reversed_entry_id"];
     if (CAMPO_ETIQUETA) _moveFields.push(CAMPO_ETIQUETA);
     // 🏪 La SUCURSAL no está en el cliente de la factura, está en la dirección de
     // entrega (Garage Cross factura a la casa matriz y entrega en cada GTC).
@@ -413,6 +429,30 @@ function actualizarDatosOdoo_(silencioso) {
     try { HAY_ENVIO = !!(_flds && _flds["partner_shipping_id"]); } catch (e) { HAY_ENVIO = false; }
     if (HAY_ENVIO) _moveFields.push("partner_shipping_id");
     var moves = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "read", [[...new Set(moveIds)]], { fields: _moveFields }); var moveMap = {}; moves.forEach(m => moveMap[m.id] = m);
+    // ↩️ Notas de crédito huérfanas: las que revierten una factura que este
+    //    informe no tiene (de otro año, o cancelada). Se marcan acá y se
+    //    descartan abajo, con la cuenta a la vista al terminar.
+    var NC_HUERFANA = {};
+    if (EXCLUIR_NC_SIN_SU_FACTURA) {
+      try {
+        var revIds = [];
+        moves.forEach(function (m) {
+          if (m.move_type === "out_refund" && m.reversed_entry_id) revIds.push(m.reversed_entry_id[0]);
+        });
+        if (revIds.length) {
+          var revs = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "read",
+            [[...new Set(revIds)]], { fields: ["invoice_date", "date", "state"] }) || [];
+          var revMap = {}; revs.forEach(function (r) { revMap[r.id] = r; });
+          moves.forEach(function (m) {
+            if (m.move_type !== "out_refund" || !m.reversed_entry_id) return;
+            var r = revMap[m.reversed_entry_id[0]]; if (!r) return;
+            var fRev = String(r.invoice_date || r.date || "");
+            if (r.state !== "posted" || (fRev && fRev < fechaInicioOdoo)) NC_HUERFANA[m.id] = true;
+          });
+        }
+      } catch (e) { NC_HUERFANA = {}; }   // si Odoo no da el dato, se trae todo como antes
+    }
+
     var products = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "product.product", "read", [[...new Set(productIds)]], { fields: ["categ_id", "product_brand_id"] }); var productMap = {}; products.forEach(p => productMap[p.id] = p);
     // ☎️ Teléfonos de los clientes: el vendedor los necesita a mano para el seguimiento.
     var telMap = telefonosDeClientes_(uid, pwd, partnerIds);
@@ -422,6 +462,9 @@ function actualizarDatosOdoo_(silencioso) {
 
       var move = moveMap[line.move_id[0]];
       if (!move || move.state !== 'posted') return;
+      if (NC_HUERFANA[move.id]) { nNcHuerfanas++; return; }
+      if (move.move_type === "out_refund" && NC_EXCLUIDAS.length &&
+          NC_EXCLUIDAS.indexOf(String(move.name || "").trim()) >= 0) { nNcHuerfanas++; return; }
 
       var productoNombre = line.product_id ? line.product_id[1] : (line.name ? line.name : "Varios"), product = line.product_id ? productMap[line.product_id[0]] : null, marcaOriginal = (product && product.product_brand_id) ? product.product_brand_id[1] : "Sin Marca", categoriaOriginal = (product && product.categ_id) ? product.categ_id[1] : "", vendedor = move.invoice_user_id ? move.invoice_user_id[1] : "Sin Vendedor", teamName = move.team_id ? move.team_id[1] : "", cliente = line.partner_id ? line.partner_id[1] : "";
       var entrega = (HAY_ENVIO && move.partner_shipping_id) ? move.partner_shipping_id[1] : "";
@@ -538,7 +581,8 @@ function actualizarDatosOdoo_(silencioso) {
   SpreadsheetApp.flush();
   if (!silencioso) SpreadsheetApp.getUi().alert(`✅ ¡Base de Odoo Actualizada!\n\n` +
     (rowsOut.length - nRemisiones) + ` líneas de facturas y notas de crédito\n` +
-    nRemisiones + ` líneas de remisiones (órdenes entregadas sin facturar)`);
+    nRemisiones + ` líneas de remisiones (órdenes entregadas sin facturar)` +
+    (nNcHuerfanas ? `\n${nNcHuerfanas} líneas de notas de crédito que revierten facturas de otro período: NO entran` : ``));
 }
 
 /**

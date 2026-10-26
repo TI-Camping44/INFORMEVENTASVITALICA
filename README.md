@@ -67,6 +67,10 @@ Réplica de lo que hoy tiene el informe de Looker Studio, más el módulo de obj
 - **Gráficos arriba**: evolución de ventas (por mes en el año completo, por día al
   elegir un mes) y las dos tortas de contribución por canal y por categoría.
 - **Filtros**: año, mes, vendedor, canal, categoría, cliente y rango de fechas.
+  El informe **abre en el mes en curso**, no en el año completo: la pregunta de
+  todos los días es cómo va el mes, y el año entero arrastra documentos viejos que
+  lo tapan. El año completo está a un clic, en «-- Año completo (YTD) --», y un
+  enlace compartido siempre abre con el recorte con el que se compartió.
 - **Gráficos de torta** con el % dibujado sobre cada porción.
 - **Exportación a Excel** de lo que se está viendo.
 - **Objetivos**: cuando se carguen desde la plataforma web, aparece el avance vs
@@ -76,6 +80,14 @@ Réplica de lo que hoy tiene el informe de Looker Studio, más el módulo de obj
 
 **Importante**: los importes son **sin IVA** y se excluyen Merchandising y Muestrario,
 igual que el informe actual.
+
+**Notas de crédito huérfanas**: no se traen las notas de crédito que revierten una
+factura que el informe no tiene — de un año anterior, o cancelada. Sin su factura,
+una nota deja un agujero que nunca fue venta del año en curso: en Vitálica eran 18
+notas del 28/02/2026 a Garage Cross por ₲62 millones, y hundían el canal Convenio
+Gimnasios. Las que revierten una factura del período se siguen restando como
+siempre. La regla está en `EXCLUIR_NC_SIN_SU_FACTURA`, y si alguna nota vieja no
+quedó enlazada a su factura en Odoo se la saca por número en `NC_EXCLUIDAS`.
 
 ## Diferencias con Camping 44
 

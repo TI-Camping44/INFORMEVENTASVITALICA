@@ -596,6 +596,8 @@ let METAS = null;        // objetivos leídos de CONFIG
 let PLAN = null;         // plan estratégico leído de la hoja PLAN
 let PAGINA = "__resumen";
 let charts = {};
+// El mes con el que abre el informe (lo llena construirFiltros: el mes en curso).
+let MES_POR_DEFECTO = "";
 let filtros = { doc: "factura", anio: "", mes: "", vendedores: [], canales: [], categorias: [], productos: [], clientes: [], cliente: "", desde: "", hasta: "" };
 let ordenTablas = {};   // por tabla: { col: "monto"|"cantidad"|"facturas"|"clave", dir: -1|1 }
 
@@ -1204,6 +1206,14 @@ function construirFiltros() {
   document.getElementById("f-mes").innerHTML = '<option value="">-- Año completo (YTD) --</option>' +
     MESES.map((m, i) => i ? '<option value="' + i + '">' + m + (i === mesVivo ? " (actual)" : "") + '</option>' : "").join("");
 
+  // El informe abre en el MES EN CURSO, no en el año completo: la pregunta de
+  // todos los días es "cómo vamos este mes", y el año entero arrastra cosas
+  // viejas (devoluciones de febrero, por ejemplo) que tapan el mes. El año
+  // completo sigue estando a un clic, en "-- Año completo (YTD) --".
+  MES_POR_DEFECTO = mesVivo ? String(mesVivo) : "";
+  document.getElementById("f-mes").value = MES_POR_DEFECTO;
+  filtros.mes = MES_POR_DEFECTO;
+
   multiselect("ms-vendedor", "vendedor", "Vendedor");
   multiselect("ms-canal", "canal", "Canal");
   multiselect("ms-categoria", "categoria", "Categoría");
@@ -1260,10 +1270,11 @@ document.addEventListener("keydown", e => {
 
 function limpiarFiltros() {
   if (FILTROS_FIJOS) return;
-  filtros.mes = ""; filtros.cliente = ""; filtros.desde = ""; filtros.hasta = ""; filtros.doc = "factura";
+  // "Limpiar" devuelve el informe a como abre: el mes en curso, no el año entero.
+  filtros.mes = MES_POR_DEFECTO; filtros.cliente = ""; filtros.desde = ""; filtros.hasta = ""; filtros.doc = "factura";
   filtros.vendedores = []; filtros.canales = []; filtros.categorias = [];
   filtros.productos = []; filtros.clientes = [];
-  document.getElementById("f-mes").value = "";
+  document.getElementById("f-mes").value = MES_POR_DEFECTO;
   document.getElementById("f-cliente").value = "";
   document.getElementById("f-doc").value = "factura";
   document.getElementById("f-desde").value = "";
@@ -1309,6 +1320,12 @@ function urlDelInforme(fijar) {
 function leerUrl() {
   const q = new URLSearchParams(window.location.search);
   if (![...q.keys()].length) return false;
+  // Un enlace compartido manda sobre el mes por defecto: si no trae mes, es
+  // porque se compartió el AÑO COMPLETO, y así tiene que abrirse.
+  if (!q.has("m")) {
+    filtros.mes = "";
+    const selMes = document.getElementById("f-mes"); if (selMes) selMes.value = "";
+  }
   PARAMS_URL.forEach(([k, campo]) => {
     if (!q.has(k)) return;
     const v = q.get(k);
