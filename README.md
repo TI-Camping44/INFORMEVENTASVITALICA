@@ -42,12 +42,16 @@ Réplica de lo que hoy tiene el informe de Looker Studio, más el módulo de obj
   (los que compraron en los últimos 3 meses) y notas de crédito.
 - **Tablas**: mejores productos, mejores clientes, mejores vendedores, ventas por
   mes, mejores categorías y canales de venta, todas con % de participación.
-- **Páginas**: Resumen + una por canal (Mayorista, Consumidor Final, Convenio
-  Gimnasios, Sin Comisiones, E-commerce) + Seguimiento + Objetivos + Plan
+- **Páginas**: Resumen + una por canal (Mayorista, Consumidor Final, Sin
+  Comisiones, E-commerce) + Convenio Gimnasios + Seguimiento + Objetivos + Plan
   Estratégico + Stock y Rotación + Auditoría de Producto + Notas de Crédito.
-- **Convenios con gimnasios**: dentro de la página del canal **Convenio
-  Gimnasios** (antes «Gimnasios y Muestrarios»: ahí ya no hay muestrarios) se
-  muestran los convenios con GTC, BIGG, RM y CG Performance. Los datos salen del
+- **Convenios con gimnasios**: con los gimnasios hay **dos negocios distintos**.
+  La **reposición** (lo que el gimnasio compra para revender, facturado al
+  gimnasio) es venta **Mayorista** y no tiene canal propio. Los **cupones** son
+  venta a cada cliente —se facturan a la persona, casi siempre en Consumidor
+  Final— y el gimnasio cobra su comisión: eso tiene su propia página,
+  **🤝 Convenio Gimnasios**, que no es un canal sino la liquidación de la
+  comisión. Ahí se muestran los convenios con GTC, BIGG, RM y CG Performance. Los datos salen del
   Apps Script de la planilla «Panel GTC · Ventas con cupón Vitalica», que trae de
   Odoo **sólo las facturas con cupón** (el del gimnasio o el de nutricionista de
   un cliente del gimnasio) y calcula la comisión. Muchas de esas facturas entran
@@ -97,10 +101,10 @@ Vitálica vende suplementos, así que no hay marcas, armas ni municiones:
 |---|---|---|
 | Eje del análisis | Marca del producto | **Categoría** (Proteínas, Creatinas, Pre Entrenos, Vitaminas y Minerales, Ácidos Grasos, Bebidas Isotónicas, Salud Articular) |
 | Importes | Con IVA | **Sin IVA** |
-| Canales | Salón, Online, E-commerce, Mayoristas, Venta Externa, Directorio, Reparaciones | **Mayorista** (unifica Mayorista Vitalica + Distribuidor)**, Consumidor Final, Convenio Gimnasios, Sin Comisiones, E-commerce** |
+| Canales | Salón, Online, E-commerce, Mayoristas, Venta Externa, Directorio, Reparaciones | **Mayorista** (unifica Mayorista Vitalica, Distribuidor y la venta a los gimnasios)**, Consumidor Final, Sin Comisiones, E-commerce** |
 | Empresa en Odoo | 1 | **2** |
 | Reglas propias | Contimarket, TUPI/PORTER, exclusiones de personas | Excluye Merchandising y Muestrario, y los clientes Bambu Group y Garage (remisiones/cotizaciones) |
-| Facturas sin vendedor | No suman | **Sí suman** (aparecen como "Sin Vendedor": es venta real, ej. Convenio Gimnasios) |
+| Facturas sin vendedor | No suman | **Sí suman** (aparecen como "Sin Vendedor": es venta real, ej. la reposición a los gimnasios) |
 
 ## Puesta en marcha
 

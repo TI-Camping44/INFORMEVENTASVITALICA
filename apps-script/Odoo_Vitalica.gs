@@ -45,7 +45,7 @@ const HOJA_DESCUBRIMIENTO = "DESCUBRIMIENTO";
 // ------------------------------------------------------------------
 //  Cargadas con lo que muestra el informe (Looker) actual de Vitálica:
 //  importes SIN IVA, sin Merchandising ni Muestrario, canales Mayorista /
-//  Distribuidor / Consumidor Final / Convenio Gimnasios / Sin Comisiones
+//  Distribuidor / Consumidor Final / Sin Comisiones
 //  y el análisis por CATEGORÍA de producto (Proteínas, Creatinas, ...).
 //  Para confirmar los nombres exactos que tiene Odoo, corré
 //  🔎 Descubrir estructura de Vitálica y ajustá estas listas.
@@ -96,7 +96,7 @@ const VENDEDORES_IGNORADOS = [];
 const EQUIPOS_EXCLUIDOS = [];
 
 // 🚫 Las facturas SIN vendedor asignado, ¿se descartan?
-//    En Vitálica NO: hay ventas reales sin vendedor (ej. Convenio Gimnasios),
+//    En Vitálica NO: hay ventas reales sin vendedor (ej. la reposición a los gimnasios),
 //    y en el Looker aparecen como "null". Se muestran como "Sin Vendedor".
 const EXCLUIR_FACTURAS_SIN_VENDEDOR = false;
 
@@ -130,7 +130,10 @@ const CLIENTES_EXCLUIDOS = ["VITALICA", "VITÁLICA"];
 
 // 🎯 Canales del panel (los del informe actual de Vitálica).
 //    OJO: si se cambian, hay que cambiarlos también en index.html y en la web app.
-const CANALES = ["Mayorista", "Consumidor Final", "Convenio Gimnasios", "Sin Comisiones", "E-commerce"];
+// La venta AL gimnasio (reposición de sachets y demás) es venta mayorista: el
+// gimnasio compra para revender. Los convenios con cupón no son venta de este
+// canal sino comisión a pagar, y viven en su propia página del informe.
+const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce"];
 const CANAL_POR_DEFECTO = "Consumidor Final";
 
 // 🎯 Cómo se clasifica cada factura: se mira el EQUIPO de ventas de Odoo
@@ -139,10 +142,10 @@ const CANAL_POR_DEFECTO = "Consumidor Final";
 //      Mayorista Vitalica · Distribuidor · Muestrario - Gimnasio · Consumidor final ·
 //      Consumidor Final Vitalica · Sin Comisiones · Sales · E-commerce
 //    OJO con el orden: "Muestrario - Gimnasio" tiene que caer en Gimnasios y
-//    Muestrarios antes de que lo agarre cualquier otra regla.
+//    Mayorista, igual que el resto de la venta al gimnasio.
 const MAPEO_CANALES = [
-  { match: "MUESTRARIO",       canal: "Convenio Gimnasios" },
-  { match: "GIMNASIO",         canal: "Convenio Gimnasios" },
+  { match: "MUESTRARIO",       canal: "Mayorista" },
+  { match: "GIMNASIO",         canal: "Mayorista" },
   { match: "MAYORISTA",        canal: "Mayorista" },
   // Mayorista y Distribuidor se muestran unificados como Mayorista. El equipo
   // original queda igual en la columna "Equipo Odoo" de DATA, por si hace falta.
@@ -164,11 +167,11 @@ const MAPEO_CANALES = [
 //    nombres de las sucursales que no repiten el de la casa matriz
 //    (ej. "GTC- FERNANDO ZONA SUR" no dice "GARAGE").
 const CANAL_POR_CLIENTE = [
-  { match: "BAMBU",    canal: "Convenio Gimnasios" },
-  { match: "BAMBÚ",    canal: "Convenio Gimnasios" },
-  { match: "BIGG",     canal: "Convenio Gimnasios" },
-  { match: "GARAGE",   canal: "Convenio Gimnasios" },
-  { match: "GTC",      canal: "Convenio Gimnasios" },
+  { match: "BAMBU",    canal: "Mayorista" },
+  { match: "BAMBÚ",    canal: "Mayorista" },
+  { match: "BIGG",     canal: "Mayorista" },
+  { match: "GARAGE",   canal: "Mayorista" },
+  { match: "GTC",      canal: "Mayorista" },
   { match: "EL NEGRO", canal: "Mayorista" },
   // Venturio es cuenta mayorista, pero tiene documentos (sobre todo notas de
   // crédito) cargados con el equipo "Consumidor final", lo que distorsionaba la

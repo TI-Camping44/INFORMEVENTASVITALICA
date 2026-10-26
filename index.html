@@ -303,6 +303,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
        onerror="if(!this.dataset.r){this.dataset.r=1;this.src='LOGO_VITALICA.png';}else{this.style.display='none';}">
   <h2 onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)">Vitálica · BI</h2>
   <div id="menu-canales"></div>
+  <div class="menu-item" data-page="__convenios" onclick="irA('__convenios', this)">🤝 Convenio Gimnasios</div>
   <div class="menu-item" data-page="__seguimiento" onclick="irA('__seguimiento', this)">📞 Seguimiento</div>
   <div class="menu-item" data-page="__objetivos" onclick="irA('__objetivos', this)">🎯 Objetivos</div>
   <div class="menu-item" data-page="__plan" onclick="irA('__plan', this)">🧭 Plan Estratégico</div>
@@ -346,17 +347,6 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   </div>
 
   <div id="vista-datos">
-    <!-- Con los gimnasios hay dos negocios distintos y la página los separa:
-         arriba la venta con CUPÓN (a cada cliente, con su comisión), abajo la
-         venta de REPOSICIÓN (lo que el gimnasio compra para revender). -->
-    <div id="convenios-gym" class="hide"></div>
-    <div id="titulo-reposicion" class="card hide" style="padding:9px 12px">
-      <b style="font-size:13px">📦 Venta de reposición a los gimnasios</b>
-      <div style="color:var(--muted);font-size:11px;margin-top:3px">
-        Lo que el gimnasio compra para revender, facturado al gimnasio. Todo lo que sigue en esta
-        página es esta venta. La venta con cupón se factura a cada cliente y está arriba: no suma acá.
-      </div>
-    </div>
     <div class="kpi-row" id="kpis"></div>
     <div class="note">Observación: importes sin IVA. Por defecto se muestran <b>solo facturas</b>.
       Lo <b>entregado sin facturar</b> (órdenes de venta confirmadas y entregadas que todavía no
@@ -445,6 +435,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   <div id="vista-plan" class="hide"></div>
   <div id="vista-audit" class="hide"></div>
   <div id="vista-stock" class="hide"></div>
+  <div id="vista-convenios" class="hide"><div id="convenios-gym"></div></div>
   <div id="vista-nc" class="hide"></div>
 </main>
 
@@ -482,7 +473,9 @@ let SHEET_GID_PLAN = '';
 const CANALES_PLAN = [
   { nombre: "Tiendas de suplementos",      canales: [], equipos: [],
     nota: "Odoo no lo distingue: hoy sus ventas caen dentro de Mayorista" },
-  { nombre: "Gimnasios",                   canales: ["Convenio Gimnasios"], equipos: [] },
+  // Ya no hay canal de gimnasios (su venta es mayorista): se mide por el equipo
+  // de Odoo, que sí distingue la venta al gimnasio dentro del mayorista.
+  { nombre: "Gimnasios",                   canales: [], equipos: ["MUESTRARIO", "GIMNASIO"] },
   { nombre: "Farmacias",                   canales: [], equipos: [],
     nota: "Odoo no lo distingue: canal nuevo, todavía no se factura aparte" },
   { nombre: "Distribuidores regionales",   canales: [], equipos: ["DISTRIBUIDOR", "DISTRIBUCION"],
@@ -496,14 +489,22 @@ const CANALES_PLAN = [
 const PLAN_VERDE = 95, PLAN_AMBAR = 75;
 
 // Canales del panel (mismos nombres que en el Apps Script).
-const CANALES = ["Mayorista", "Consumidor Final", "Convenio Gimnasios", "Sin Comisiones", "E-commerce"];
+// La venta AL gimnasio (reposición de sachets y demás) es venta mayorista: no
+// tiene canal propio. "Convenio Gimnasios" quedó como una PÁGINA aparte, la de
+// los cupones, que no es venta del canal sino comisión a pagar.
+const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce"];
 
 // Canales que se muestran unificados. Se aplica acá también (no solo en el Apps
 // Script) para que tenga efecto inmediato, sin esperar el re-sync de la planilla.
 // "Gimnasios y Muestrarios" pasó a llamarse "Convenio Gimnasios" (ahí ya no hay
 // muestrarios). Lo que la planilla tenga escrito con el nombre viejo se muestra
 // con el nuevo, así no quedan dos canales hasta que se regenere la DATA.
-const UNIFICAR_CANALES = { "Distribuidor": "Mayorista", "Gimnasios y Muestrarios": "Convenio Gimnasios" };
+const UNIFICAR_CANALES = {
+  "Distribuidor": "Mayorista",
+  // Lo que la planilla tenga escrito con los nombres viejos entra como mayorista,
+  // así no quedan canales fantasma hasta que se regenere la DATA.
+  "Gimnasios y Muestrarios": "Mayorista", "Convenio Gimnasios": "Mayorista"
+};
 
 // Canal forzado por CLIENTE, cuando el equipo de venta de Odoo no lo refleja
 // (gimnasios y distribuidoras cargados como "Consumidor final"). Tiene que ser
@@ -542,7 +543,9 @@ const CONTACTOS_CLAVE = '';   // solo si se puso una clave en el .gs
 // comisión de cada convenio. Se muestran arriba de la página de este canal.
 // La clave del enlace es de SOLA LECTURA: devuelve el JSON, no abre el portal.
 const CONVENIOS_URL = 'https://script.google.com/macros/s/AKfycbz7ZaFdeg7A8yDgfDEEwMcrzhkbheqVzLafaT4rBOUFwOpZpfmF7iw-Edi_5u0w8T7e/exec?k=64f825f77dd29f596931';
-const CANAL_CONVENIOS = "Convenio Gimnasios";
+// Los convenios son su propia página (no un canal): lo que se mide ahí no es
+// venta de Vitálica sino la comisión que se le paga al gimnasio.
+const PAGINA_CONVENIOS = "__convenios";
 // El canal sobre el que el vendedor hace seguimiento (los mayoristas no entran).
 const CANAL_SEGUIMIENTO = "Consumidor Final";
 // Cuándo volver a escribirle: se lee la duración del producto de su propio
@@ -569,17 +572,19 @@ const DIAS_RECONTACTO = 30;
 // =====================================================================
 
 const CANAL_POR_CLIENTE = [
-  { match: "BAMBU",    canal: "Convenio Gimnasios" },
-  { match: "BAMBÚ",    canal: "Convenio Gimnasios" },
-  { match: "GARAGE",   canal: "Convenio Gimnasios" },
+  // Los gimnasios compran para revender: su factura es venta mayorista.
+  { match: "BAMBU",    canal: "Mayorista" },
+  { match: "BAMBÚ",    canal: "Mayorista" },
+  { match: "GARAGE",   canal: "Mayorista" },
+  { match: "BIGG",     canal: "Mayorista" },
+  { match: "GTC",      canal: "Mayorista" },
   { match: "EL NEGRO", canal: "Mayorista" },
   // Venturio es cuenta mayorista, pero tiene documentos (sobre todo notas de
   // crédito) cargados con el equipo "Consumidor final".
   { match: "VENTURIO", canal: "Mayorista" }
 ];
 const ICONO_CANAL = {
-  "Mayorista": "🏢", "Consumidor Final": "🛍️",
-  "Convenio Gimnasios": "🏋️", "Sin Comisiones": "📄", "E-commerce": "🛒"
+  "Mayorista": "🏢", "Consumidor Final": "🛍️", "Sin Comisiones": "📄", "E-commerce": "🛒"
 };
 
 // Un cliente es ACTIVO si compró en los últimos N meses.
@@ -1059,7 +1064,9 @@ function leerConfig(d) {
     // El canal de CONFIG puede venir con el nombre viejo: se traduce igual que en la DATA.
     if (d[i] && d[i][5]) {
       const bruto = String(d[i][5]).trim(), c = UNIFICAR_CANALES[bruto] || bruto;
-      if (c && CANALES.includes(c)) m.canales[c] = aNumero(d[i][6]);
+      // Dos nombres viejos pueden caer en el mismo canal (Gimnasios y Distribuidor
+      // ahora son Mayorista): las metas se suman, no se pisan.
+      if (c && CANALES.includes(c)) m.canales[c] = (m.canales[c] || 0) + aNumero(d[i][6]);
     }
     if (d[i] && d[i][8]) { const v = String(d[i][8]).trim(); if (v) m.vendedores[v] = aNumero(d[i][9]); }
   }
@@ -1454,8 +1461,10 @@ function aplicarInterno() {
 
   const esObjetivos = PAGINA === "__objetivos", esNC = PAGINA === "__nc",
         esSeg = PAGINA === "__seguimiento", esPlan = PAGINA === "__plan",
-        esAudit = PAGINA === "__audit", esStock = PAGINA === "__stock";
-  document.getElementById("vista-datos").classList.toggle("hide", esObjetivos || esNC || esSeg || esPlan || esAudit || esStock);
+        esAudit = PAGINA === "__audit", esStock = PAGINA === "__stock",
+        esConv = PAGINA === PAGINA_CONVENIOS;
+  document.getElementById("vista-datos").classList.toggle("hide", esObjetivos || esNC || esSeg || esPlan || esAudit || esStock || esConv);
+  document.getElementById("vista-convenios").classList.toggle("hide", !esConv);
   document.getElementById("vista-audit").classList.toggle("hide", !esAudit);
   document.getElementById("vista-stock").classList.toggle("hide", !esStock);
   document.getElementById("vista-objetivos").classList.toggle("hide", !esObjetivos);
@@ -1468,12 +1477,15 @@ function aplicarInterno() {
       : PAGINA === "__nc" ? "Notas de Crédito"
         : PAGINA === "__audit" ? "Auditoría de Producto"
         : PAGINA === "__stock" ? "Stock y Rotación"
+        : PAGINA === PAGINA_CONVENIOS ? "Convenio Gimnasios · facturas con cupón"
         : PAGINA === "__plan" ? "Plan Estratégico Comercial"
           : PAGINA === "__seguimiento" ? "Seguimiento de Clientes" : PAGINA;
   document.getElementById("txt-pagina").textContent = nombrePagina;
   document.getElementById("txt-pagina-sub").textContent =
     (filtros.mes ? MESES[+filtros.mes] + " " : "Año ") + filtros.anio +
-    " · " + num(datos.length) + " líneas de factura";
+    // En la página de convenios, las líneas de la venta no vienen al caso:
+    // lo que se cuenta ahí son las facturas con cupón.
+    (esConv ? "" : " · " + num(datos.length) + " líneas de factura");
 
   renderChips();
   refrescarOpciones();
@@ -1481,6 +1493,7 @@ function aplicarInterno() {
   if (esPlan) return renderPlan();
   if (esAudit) return renderAuditoria();
   if (esStock) return renderStock();
+  if (esConv) return renderConvenios();
   if (esObjetivos) return renderObjetivos(datos);
   if (esNC) return renderNC(datos);
   renderDatos(datos);
@@ -1699,7 +1712,6 @@ function alternarClientes() {
 }
 
 function renderDatos(datos) {
-  renderConvenios();
   // Los muestrarios se muestran SIEMPRE en su propio KPI, aunque el filtro de
   // documento los esté dejando afuera: así se ve qué queda sin contar.
   const todosLosDocs = filtrar(true);
@@ -1751,12 +1763,7 @@ function renderDatos(datos) {
   // de categorías, que al elegir una se abre por producto.
   const enCanal = (PAGINA !== "__resumen" && !PAGINA.startsWith("__")) ? PAGINA
                 : (filtros.canales.length === 1 ? filtros.canales[0] : "");
-  if (enCanal === CANAL_CONVENIOS) {
-    // Acá el vendedor no dice nada (la reposición la factura siempre el mismo):
-    // lo que importa es qué gimnasio repone.
-    tituloGrafico("canal", "Contribución por Gimnasio", "reposición facturada al gimnasio");
-    donut("ch-canal", agrupar(datos, "cliente", true).slice(0, 10), "cliente");
-  } else if (enCanal) {
+  if (enCanal) {
     tituloGrafico("canal", "Contribución por Vendedor", "dentro de " + enCanal);
     donut("ch-canal", agrupar(datos, "vendedor", true).slice(0, 10), "vendedor");
   } else {
@@ -1880,14 +1887,6 @@ function mensajeGrafico(id, texto) {
 // (a qué contacto se facturó, con qué vendedor y en qué canal quedó).
 const MAX_DOCS = 300;
 function renderDocumentos(datos) {
-  // En la página de Convenio Gimnasios este detalle sobra: arriba ya está la
-  // tabla de facturas con cupón, que es la que se usa para liquidar. Si los
-  // convenios no se pudieron leer, se muestra igual y no se pierde nada.
-  const card = document.getElementById("card-docs");
-  const sobra = PAGINA === CANAL_CONVENIOS && CONVENIOS && !CONVENIOS.error;
-  if (card) card.classList.toggle("hide", !!sobra);
-  if (sobra) return;
-
   const acc = {};
   datos.forEach(r => {
     const k = r.facturaId;
@@ -2467,7 +2466,7 @@ async function cargarConvenios() {
     console.warn("No se pudieron leer los convenios:", e.message);
     CONVENIOS = { error: e.message };
   }
-  if (PAGINA === CANAL_CONVENIOS) renderConvenios();
+  if (PAGINA === PAGINA_CONVENIOS) renderConvenios();
 }
 function convenioEnPeriodo(f) {
   const fecha = String(f.fecha || "");
@@ -2481,11 +2480,7 @@ function convenioEnPeriodo(f) {
 function renderConvenios() {
   const el = document.getElementById("convenios-gym");
   if (!el) return;
-  const ver = PAGINA === CANAL_CONVENIOS;
-  el.classList.toggle("hide", !ver);
-  const tit = document.getElementById("titulo-reposicion");
-  if (tit) tit.classList.toggle("hide", !ver);
-  if (!ver) return;
+  if (PAGINA !== PAGINA_CONVENIOS) return;
   const titulo = '<h3>🤝 Convenios con gimnasios · facturas con cupón <small>';
   if (!CONVENIOS) { el.innerHTML = '<div class="card">' + titulo + '</small></h3><div class="empty">Cargando convenios…</div></div>'; return; }
   if (CONVENIOS.error) { el.innerHTML = '<div class="card">' + titulo + '</small></h3><div class="empty">No se pudieron leer los convenios (' + esc(CONVENIOS.error) + ').</div></div>'; return; }
@@ -2540,9 +2535,10 @@ function renderConvenios() {
     '<div class="card">' + titulo + esc(periodo) + (CONVENIOS.actualizado ? " · datos de Odoo al " + esc(CONVENIOS.actualizado) : "") +
       '</small></h3><div class="tbl-scroll"><table>' + tabla + '</table></div>' +
       '<div class="note" style="margin-top:8px">Solo facturas donde se usó un cupón: el del gimnasio (GTCLUQ, BIGGCEN, RMLAM…) ' +
-      'o uno de nutricionista con el cliente marcado como del gimnasio. Muchas entran por el canal Consumidor Final, ' +
-      'así que estos montos <b>no</b> son parte del total de esta página. Comisión sobre el total ' + (conIva ? "con" : "sin") +
-      ' IVA; las notas de crédito restan.</div></div>' +
+      'o uno de nutricionista con el cliente marcado como del gimnasio. Son ventas <b>a cada cliente</b>, no al gimnasio: ' +
+      'ya están contadas en su canal (casi todas en Consumidor Final) y acá se muestran aparte sólo para liquidar la ' +
+      'comisión. La reposición que el gimnasio compra para revender no entra acá: es venta <b>Mayorista</b>. ' +
+      'Comisión sobre el total ' + (conIva ? "con" : "sin") + ' IVA; las notas de crédito restan.</div></div>' +
     '<div class="card"><h3>Facturas con cupón de convenio <small>' + det.length + ' comprobantes</small></h3>' +
       '<div class="tbl-scroll" style="max-height:360px"><table>' + detalle + '</table></div></div>';
 }
