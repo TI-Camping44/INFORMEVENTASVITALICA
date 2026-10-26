@@ -389,7 +389,7 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
         <table id="t-canales"></table></div>
     </div>
 
-    <div class="card"><h3>Detalle de Documentos <small id="sub-docs"></small></h3>
+    <div class="card" id="card-docs"><h3>Detalle de Documentos <small id="sub-docs"></small></h3>
       <div class="tbl-scroll" style="max-height:520px"><table id="t-docs"></table></div></div>
   </div>
 
@@ -1865,12 +1865,25 @@ function mensajeGrafico(id, texto) {
 // (a qué contacto se facturó, con qué vendedor y en qué canal quedó).
 const MAX_DOCS = 300;
 function renderDocumentos(datos) {
+  // En la página de Convenio Gimnasios este detalle sobra: arriba ya está la
+  // tabla de facturas con cupón, que es la que se usa para liquidar. Si los
+  // convenios no se pudieron leer, se muestra igual y no se pierde nada.
+  const card = document.getElementById("card-docs");
+  const sobra = PAGINA === CANAL_CONVENIOS && CONVENIOS && !CONVENIOS.error;
+  if (card) card.classList.toggle("hide", !!sobra);
+  if (sobra) return;
+
   const acc = {};
   datos.forEach(r => {
     const k = r.facturaId;
     if (!acc[k]) acc[k] = {
       fecha: r.fecha, ymd: r.ymd, tipo: r.esRemision ? "Remisión" : (r.esNC ? "Nota de Crédito" : "Factura"),
-      nro: r.factura, cliente: r.clienteCompleto, sucursal: r.sucursal,
+      // Dos datos distintos, dos columnas: a QUIÉN se le facturó y DÓNDE se
+      // entregó. Juntos en una sola celda quedaba "GARAGE CROSS SOCIEDAD
+      // ANONIMA - GARAGE CROSS S.A. :80…", que repite el mismo nombre y no
+      // deja leer ninguno de los dos.
+      nro: r.factura, cliente: r.clienteBase || r.clienteCompleto,
+      clienteCompleto: r.clienteCompleto, ruc: r.ruc, sucursal: r.sucursal,
       vendedor: r.vendedor, canal: r.canal, monto: 0, lineas: 0
     };
     acc[k].monto += r.monto; acc[k].lineas++;
@@ -1887,16 +1900,22 @@ function renderDocumentos(datos) {
   const total = docs.reduce((s, d) => s + d.monto, 0);
   let h = "<thead><tr><th style='width:78px'>Fecha</th><th style='width:104px'>Tipo</th>" +
     "<th style='width:118px'>Número</th><th class='col-nombre'>Facturado a</th>" +
-    "<th class='col-nombre'>Vendedor</th><th style='width:150px'>Canal</th>" +
+    "<th class='col-nombre'>Entregado a</th>" +
+    "<th class='col-nombre' style='width:150px'>Vendedor</th><th style='width:150px'>Canal</th>" +
     "<th class='num w-monto'>Sin IVA PYG</th></tr></thead><tbody>";
   docs.slice(0, MAX_DOCS).forEach(d => {
-    const quien = d.cliente + (d.sucursal ? "  ·  " + d.sucursal : "");
+    // Si se entregó en la misma dirección del cliente, la columna va con un
+    // guion: repetir el nombre no agrega nada.
+    const entrega = (d.sucursal && norm(d.sucursal) !== norm(d.cliente)) ? d.sucursal : "";
+    const ayudaCli = d.clienteCompleto + (d.ruc ? " · RUC " + d.ruc : "");
     h += "<tr><td>" + d.fecha.toLocaleDateString("es-PY") + "</td><td>" + d.tipo + "</td><td>" + esc(d.nro) +
-      "</td><td class='col-nombre' title='" + esc(quien) + "'><span class='txt'>" + esc(quien) + "</span></td>" +
+      "</td><td class='col-nombre' title='" + esc(ayudaCli) + "'><span class='txt'>" + esc(d.cliente) + "</span></td>" +
+      "<td class='col-nombre' title='" + esc(entrega || "Se entregó en la dirección del cliente") + "'><span class='txt'>" +
+      (entrega ? esc(entrega) : "<span style='color:var(--muted)'>—</span>") + "</span></td>" +
       "<td class='col-nombre' title='" + esc(d.vendedor) + "'><span class='txt'>" + esc(d.vendedor) + "</span></td>" +
       "<td>" + esc(d.canal) + "</td><td class='num'>" + num(d.monto) + "</td></tr>";
   });
-  h += "<tr class='total-row'><td colspan='6'>Total (" + docs.length + " documentos)</td><td class='num'>" +
+  h += "<tr class='total-row'><td colspan='7'>Total (" + docs.length + " documentos)</td><td class='num'>" +
     num(total) + "</td></tr></tbody>";
   el.innerHTML = h;
 }
