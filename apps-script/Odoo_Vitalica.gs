@@ -424,7 +424,10 @@ function actualizarDatosOdoo_(silencioso) {
         if (!CAMPO_ETIQUETA && (lbl === "ETIQUETAS" || (fn.indexOf("x_studio") === 0 && fn.toUpperCase().indexOf("ETIQUETA") >= 0))) CAMPO_ETIQUETA = fn;
       });
     } catch (e) { CAMPO_ETIQUETA = ""; }
-    var _moveFields = ["invoice_user_id", "team_id", "move_type", "name", "invoice_date", "invoice_date_due", "state", "reversed_entry_id"];
+    // partner_id de la FACTURA: el del apunte contable puede quedar viejo si
+    // después se le cambió el cliente a la factura (pasó con 001-002-0000221,
+    // que se corrigió a Bambú Group y el apunte seguía diciendo Garage Cross).
+    var _moveFields = ["invoice_user_id", "team_id", "move_type", "name", "invoice_date", "invoice_date_due", "state", "reversed_entry_id", "partner_id"];
     if (CAMPO_ETIQUETA) _moveFields.push(CAMPO_ETIQUETA);
     // 🏪 La SUCURSAL no está en el cliente de la factura, está en la dirección de
     // entrega (Garage Cross factura a la casa matriz y entrega en cada GTC).
@@ -457,7 +460,9 @@ function actualizarDatosOdoo_(silencioso) {
     }
 
     var products = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "product.product", "read", [[...new Set(productIds)]], { fields: ["categ_id", "product_brand_id"] }); var productMap = {}; products.forEach(p => productMap[p.id] = p);
-    // ☎️ Teléfonos de los clientes: el vendedor los necesita a mano para el seguimiento.
+    // ☎️ Teléfonos de los clientes: el vendedor los necesita a mano para el
+    //    seguimiento. Se piden por el cliente de la FACTURA y por el del apunte.
+    moves.forEach(function (m) { if (m.partner_id) partnerIds.push(m.partner_id[0]); });
     var telMap = telefonosDeClientes_(uid, pwd, partnerIds);
 
     lines.forEach(line => {
@@ -469,7 +474,7 @@ function actualizarDatosOdoo_(silencioso) {
       if (move.move_type === "out_refund" && NC_EXCLUIDAS.length &&
           NC_EXCLUIDAS.indexOf(String(move.name || "").trim()) >= 0) { nNcHuerfanas++; return; }
 
-      var productoNombre = line.product_id ? line.product_id[1] : (line.name ? line.name : "Varios"), product = line.product_id ? productMap[line.product_id[0]] : null, marcaOriginal = (product && product.product_brand_id) ? product.product_brand_id[1] : "Sin Marca", categoriaOriginal = (product && product.categ_id) ? product.categ_id[1] : "", vendedor = move.invoice_user_id ? move.invoice_user_id[1] : "Sin Vendedor", teamName = move.team_id ? move.team_id[1] : "", cliente = line.partner_id ? line.partner_id[1] : "";
+      var productoNombre = line.product_id ? line.product_id[1] : (line.name ? line.name : "Varios"), product = line.product_id ? productMap[line.product_id[0]] : null, marcaOriginal = (product && product.product_brand_id) ? product.product_brand_id[1] : "Sin Marca", categoriaOriginal = (product && product.categ_id) ? product.categ_id[1] : "", vendedor = move.invoice_user_id ? move.invoice_user_id[1] : "Sin Vendedor", teamName = move.team_id ? move.team_id[1] : "", cliente = (move.partner_id ? move.partner_id[1] : "") || (line.partner_id ? line.partner_id[1] : "");
       var entrega = (HAY_ENVIO && move.partner_shipping_id) ? move.partner_shipping_id[1] : "";
       var vNorm = vendedor.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""), pNorm = productoNombre.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""), cNormCliente = cliente.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""), tNorm = teamName.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
       var descNorm = (line.name || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -562,7 +567,7 @@ function actualizarDatosOdoo_(silencioso) {
 
       var precioPromedio = cantidad !== 0 ? (subtotal / cantidad) : 0;
       rowsOut.push(["Odoo", fechaStr, Number(pf[0]), Number(pf[1]), Number(pf[2]), documento, move.name || "", fechaVencStr, 0, condicion, total, total, tipoCambio, cliente, marcaOriginal, marcaFinal, unidadNegocio, vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(line.discount || 0), precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, grupoEcom, line.move_id[0], teamName, entrega,
-        (line.partner_id ? (telMap[line.partner_id[0]] || "") : ""),
+        ((move.partner_id && telMap[move.partner_id[0]]) || (line.partner_id ? (telMap[line.partner_id[0]] || "") : "")),
         // 📏 Unidad de medida de la línea. Sin esto, 10 cajas y 10 unidades suman
         // 20 y nadie se entera: es la causa clásica de que dos informes no cuadren.
         (line.product_uom_id ? line.product_uom_id[1] : "")]);
