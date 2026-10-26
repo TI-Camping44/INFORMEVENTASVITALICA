@@ -346,8 +346,18 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   </div>
 
   <div id="vista-datos">
-    <div class="kpi-row" id="kpis"></div>
+    <!-- Con los gimnasios hay dos negocios distintos y la página los separa:
+         arriba la venta con CUPÓN (a cada cliente, con su comisión), abajo la
+         venta de REPOSICIÓN (lo que el gimnasio compra para revender). -->
     <div id="convenios-gym" class="hide"></div>
+    <div id="titulo-reposicion" class="card hide" style="padding:9px 12px">
+      <b style="font-size:13px">📦 Venta de reposición a los gimnasios</b>
+      <div style="color:var(--muted);font-size:11px;margin-top:3px">
+        Lo que el gimnasio compra para revender, facturado al gimnasio. Todo lo que sigue en esta
+        página es esta venta. La venta con cupón se factura a cada cliente y está arriba: no suma acá.
+      </div>
+    </div>
+    <div class="kpi-row" id="kpis"></div>
     <div class="note">Observación: importes sin IVA. Por defecto se muestran <b>solo facturas</b>.
       Lo <b>entregado sin facturar</b> (órdenes de venta confirmadas y entregadas que todavía no
       tienen factura: muestrarios y entregas pendientes de facturar) se cuenta aparte y se puede
@@ -1741,7 +1751,12 @@ function renderDatos(datos) {
   // de categorías, que al elegir una se abre por producto.
   const enCanal = (PAGINA !== "__resumen" && !PAGINA.startsWith("__")) ? PAGINA
                 : (filtros.canales.length === 1 ? filtros.canales[0] : "");
-  if (enCanal) {
+  if (enCanal === CANAL_CONVENIOS) {
+    // Acá el vendedor no dice nada (la reposición la factura siempre el mismo):
+    // lo que importa es qué gimnasio repone.
+    tituloGrafico("canal", "Contribución por Gimnasio", "reposición facturada al gimnasio");
+    donut("ch-canal", agrupar(datos, "cliente", true).slice(0, 10), "cliente");
+  } else if (enCanal) {
     tituloGrafico("canal", "Contribución por Vendedor", "dentro de " + enCanal);
     donut("ch-canal", agrupar(datos, "vendedor", true).slice(0, 10), "vendedor");
   } else {
@@ -2468,6 +2483,8 @@ function renderConvenios() {
   if (!el) return;
   const ver = PAGINA === CANAL_CONVENIOS;
   el.classList.toggle("hide", !ver);
+  const tit = document.getElementById("titulo-reposicion");
+  if (tit) tit.classList.toggle("hide", !ver);
   if (!ver) return;
   const titulo = '<h3>🤝 Convenios con gimnasios · facturas con cupón <small>';
   if (!CONVENIOS) { el.innerHTML = '<div class="card">' + titulo + '</small></h3><div class="empty">Cargando convenios…</div></div>'; return; }
