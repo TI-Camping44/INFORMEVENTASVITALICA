@@ -1627,8 +1627,10 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
     th("monto", "Sin IVA PYG", "num w-monto");
   if (opts.cantidad) h += th("cantidad", "Cantidad", "num w-cant");
   if (opts.facturas) h += th("facturas", "Facturas", "num w-fact");
-  if (opts.stock) h += th("stock", "Stock", "num w-cant") +
-    "<th class='num' style='width:62px' title='Para cuántos meses de venta alcanza el stock de hoy'>Meses</th>";
+  // Sólo el stock: la cobertura en meses, acá sin la explicación al lado, se
+  // leía como un dato suelto. Vive en la pestaña 📦 Stock y Rotación, con su
+  // estado y su leyenda.
+  if (opts.stock) h += th("stock", "Stock", "num w-cant");
   h += "<th class='num w-pct'>%</th></tr></thead><tbody>";
 
   top.forEach((f, i) => {
@@ -1645,16 +1647,15 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
     if (opts.cantidad) h += "<td class='num'>" + num(f.cantidad) + "</td>";
     if (opts.facturas) h += "<td class='num'>" + num(f.facturas) + "</td>";
     if (opts.stock) h += (f.stock == null
-      ? "<td class='num' title='Este producto no figura en el tablero de stock'>—</td><td class='num'>—</td>"
-      : "<td class='num'>" + num(f.stock) + "</td><td class='num " + claseEstado(f.est) +
-        "' title='" + esc(ayudaEstado(f.est)) + "'>" + textoCobertura(f.cob) + "</td>");
+      ? "<td class='num' title='Este producto no figura en el tablero de stock'>—</td>"
+      : "<td class='num' title='" + esc(ayudaEstado(f.est)) + "'>" + num(f.stock) + "</td>");
     h += "<td class='num'>" + pct(f.monto, total).toFixed(1) + "%</td></tr>";
   });
 
   h += "<tr class='total-row'><td></td><td class='col-nombre'>Total (" + filas.length + ")</td><td class='num'>" + num(total) + "</td>";
   if (opts.cantidad) h += "<td class='num'>" + num(filas.reduce((s, f) => s + f.cantidad, 0)) + "</td>";
   if (opts.facturas) h += "<td class='num'>" + num(filas.reduce((s, f) => s + f.facturas, 0)) + "</td>";
-  if (opts.stock) h += "<td class='num'>" + num(filas.reduce((s, f) => s + (f.stock || 0), 0)) + "</td><td></td>";
+  if (opts.stock) h += "<td class='num'>" + num(filas.reduce((s, f) => s + (f.stock || 0), 0)) + "</td>";
   h += "<td class='num'>100%</td></tr></tbody>";
   el.innerHTML = h;
   return total;
