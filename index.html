@@ -175,6 +175,9 @@ select, input[type=date], input[type=text] { padding: 6px 8px; border: 1px solid
 .kpi .k-val { font-size: 20px; font-weight: 800; margin-top: 3px; letter-spacing: -.5px; }
 .kpi .k-sub { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
 .kpi.neg .k-val { color: var(--red); }
+/* El neto es el número que hay que mirar: se marca, sin gritar. */
+.kpi.neto { border-top-color: var(--ok); background: #f6fbf9; }
+.kpi.neto .k-val { color: var(--ok); }
 
 .note { background: #fdf6e3; border: 1px solid #f3e2b3; color: #7a5b00; border-radius: 6px; padding: 6px 10px;
         font-size: 11px; margin-bottom: 12px; }
@@ -1687,19 +1690,24 @@ function calcularKPIs(datos) {
 }
 function renderKPIs(k, kRem) {
   const soloFacturas = filtros.doc === "factura";
+  // Los tres primeros se leen como una cuenta: facturado, menos devoluciones,
+  // igual neto. El neto es el número que coincide con las tablas de abajo, que
+  // ya vienen netas; el facturado solo es el bruto.
   document.getElementById("kpis").innerHTML =
     kpi(soloFacturas ? "Monto Facturado s/IVA" : "Monto s/IVA", gs(k.monto),
       num(k.unidades) + " unidades" + (!soloFacturas && k.montoRemision ? " · incl. " + gs(k.montoRemision) + " en muestrarios" : "")) +
+    kpi("Notas de Crédito", gs(k.nc), pct(Math.abs(k.nc), k.monto).toFixed(1) + "% de la venta", true) +
+    kpi(soloFacturas ? "Facturado Neto" : "Neto s/IVA", gs(k.monto + k.nc),
+      "facturado menos notas de crédito", false, "neto") +
     kpi("Entregado sin facturar", gs(kRem ? kRem.monto : 0),
       soloFacturas ? "órdenes entregadas · NO suman al monto" : "órdenes entregadas · incluidas en el monto") +
     kpi("Cant. Facturas", num(k.facturas), num(k.lineas) + " líneas") +
     kpi("Promedio de Tickets", gs(k.ticket), "promedio por línea (AVG)") +
-    kpi("Clientes Activos", num(k.activos), "de " + num(k.clientes) + " · desde " + k.corte.toLocaleDateString("es-PY")) +
-    kpi("Notas de Crédito", gs(k.nc), pct(Math.abs(k.nc), k.monto).toFixed(1) + "% de la venta", true);
+    kpi("Clientes Activos", num(k.activos), "de " + num(k.clientes) + " · desde " + k.corte.toLocaleDateString("es-PY"));
 }
-function kpi(lbl, val, sub, neg) {
-  return '<div class="kpi' + (neg ? " neg" : "") + '"><div class="k-lbl">' + lbl + '</div><div class="k-val">' +
-    val + '</div><div class="k-sub">' + (sub || "&nbsp;") + '</div></div>';
+function kpi(lbl, val, sub, neg, extra) {
+  return '<div class="kpi' + (neg ? " neg" : "") + (extra ? " " + extra : "") + '"><div class="k-lbl">' + lbl +
+    '</div><div class="k-val">' + val + '</div><div class="k-sub">' + (sub || "&nbsp;") + '</div></div>';
 }
 
 // ------------------------------------------------------------- render
