@@ -591,6 +591,11 @@ const CANAL_POR_CLIENTE = [
   // crédito) cargados con el equipo "Consumidor final".
   { match: "VENTURIO", canal: "Mayorista" }
 ];
+// Canales que se reconocen por el nombre del equipo de ventas de Odoo, aunque
+// la planilla todavía no los conozca. Sólo para los canales nuevos: los demás
+// ya vienen resueltos en la columna «Equipo/Canal» de la DATA.
+const CANALES_POR_EQUIPO = [["TIENDA NARANJA", "Tienda Naranja"], ["NARANJA", "Tienda Naranja"]];
+
 const ICONO_CANAL = {
   "Mayorista": "🏢", "Consumidor Final": "🛍️", "Sin Comisiones": "📄",
   "E-commerce": "🛒", "Tienda Naranja": "🍊"
@@ -963,6 +968,14 @@ function normalizarData(filas) {
       vendedor: vend,
       canal: (function () {
         const c = String(r[18] || "").trim() || "Sin Canal";
+        // El EQUIPO de Odoo (columna 34) manda para los canales que el Apps
+        // Script de la planilla todavía no conoce: así Tienda Naranja empieza a
+        // contar apenas se crea el equipo en Odoo, sin esperar a que alguien
+        // actualice el script. Cuando el script se actualice, los dos coinciden.
+        const eq = norm(r[33] || "");
+        for (let i = 0; i < CANALES_POR_EQUIPO.length; i++) {
+          if (eq.includes(CANALES_POR_EQUIPO[i][0])) return CANALES_POR_EQUIPO[i][1];
+        }
         return UNIFICAR_CANALES[c] || c;
       })(),
       equipo: String(r[33] || r[18] || "").trim(),   // equipo de venta tal cual está en Odoo
