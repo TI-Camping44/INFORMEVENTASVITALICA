@@ -133,7 +133,11 @@ const CLIENTES_EXCLUIDOS = ["VITALICA", "VITÁLICA"];
 // La venta AL gimnasio (reposición de sachets y demás) es venta mayorista: el
 // gimnasio compra para revender. Los convenios con cupón no son venta de este
 // canal sino comisión a pagar, y viven en su propia página del informe.
-const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce"];
+// TI-0106: Tienda Naranja es un canal propio de Vitálica (marketplace), al mismo
+// nivel que E-commerce y con su objetivo mensual aparte. Unicentro es el
+// equivalente de Camping 44 y vive en el informe de Camping 44, no acá: así
+// cada canal queda sólo en su empresa.
+const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce", "Tienda Naranja"];
 const CANAL_POR_DEFECTO = "Consumidor Final";
 
 // 🎯 Cómo se clasifica cada factura: se mira el EQUIPO de ventas de Odoo
@@ -144,6 +148,10 @@ const CANAL_POR_DEFECTO = "Consumidor Final";
 //    OJO con el orden: "Muestrario - Gimnasio" tiene que caer en Gimnasios y
 //    Mayorista, igual que el resto de la venta al gimnasio.
 const MAPEO_CANALES = [
+  // Primero Tienda Naranja: si el equipo se llamara "E-commerce Tienda Naranja",
+  // tiene que ganar el canal más específico.
+  { match: "TIENDA NARANJA",   canal: "Tienda Naranja" },
+  { match: "NARANJA",          canal: "Tienda Naranja" },
   { match: "MUESTRARIO",       canal: "Mayorista" },
   { match: "GIMNASIO",         canal: "Mayorista" },
   { match: "MAYORISTA",        canal: "Mayorista" },
@@ -167,6 +175,9 @@ const MAPEO_CANALES = [
 //    nombres de las sucursales que no repiten el de la casa matriz
 //    (ej. "GTC- FERNANDO ZONA SUR" no dice "GARAGE").
 const CANAL_POR_CLIENTE = [
+  // Si la venta de Tienda Naranja se factura al marketplace como cliente (y no
+  // con el equipo de ventas), igual cae en su canal.
+  { match: "TIENDA NARANJA", canal: "Tienda Naranja" },
   { match: "BAMBU",    canal: "Mayorista" },
   { match: "BAMBÚ",    canal: "Mayorista" },
   { match: "BIGG",     canal: "Mayorista" },
@@ -368,6 +379,8 @@ function sincronizarMarcasConfig() {
   configSheet.getRange(2, 12).setValue("METAS INDIVIDUALES POR VENDEDOR Y CATEGORÍA").setFontWeight("bold").setFontColor("#2C7A7B");
   let colAct = 12;
   vendedores.forEach(v => { configSheet.getRange(3, colAct, 1, 2).merge().setValue(v).setFontWeight("bold").setBackground("#1C3D5A").setFontColor("#FFFFFF").setHorizontalAlignment("center"); configSheet.getRange(4, colAct).setValue("Categoría").setFontWeight("bold").setBackground("#E2E8F0"); configSheet.getRange(4, colAct+1).setValue("Monto Objetivo").setFontWeight("bold").setBackground("#E2E8F0"); var rows = [["--- CATEGORÍAS ---", ""]]; LISTA_MARCAS.forEach(b => rows.push([b, existingGoals[v + "|||" + b] || 0])); if (LISTA_ARMAS.length) rows.push(["--- SEGUNDA LÍNEA ---", ""]); LISTA_ARMAS.forEach(b => rows.push([b, existingGoals[v + "|||" + b] || 0])); configSheet.getRange(5, colAct, rows.length, 2).setValues(rows); configSheet.getRange(5, colAct+1, rows.length, 1).setNumberFormat("₲ #,##0"); configSheet.setColumnWidth(colAct, 250); configSheet.setColumnWidth(colAct+1, 120); configSheet.setColumnWidth(colAct+2, 30); colAct += 3; });
+  // Las familias se refrescan con la misma lista, conservando lo cargado.
+  escribirBloqueFamilias_(configSheet, leerFamiliasConfig_(data));
   SpreadsheetApp.flush(); SpreadsheetApp.getUi().alert(`✅ ¡Catálogo Sincronizado!`);
 }
 
@@ -1079,6 +1092,45 @@ function dibujarDashboard() {
   SpreadsheetApp.flush();
 }
 
+/**
+ * Bloque «METAS POR FAMILIA» en la columna F/G, debajo de las metas por canal.
+ * Antes decía "METAS POR LÍNEA" con dos renglones sueltos (SUPLEMENTOS y OTROS)
+ * que no eran familias de nada y que el dashboard ni leía. Ahora lleva las
+ * familias reales (LISTA_MARCAS, las mismas categorías del informe) y el
+ * dashboard las usa para el avance por familia que pidió el TI-0104.
+ * `existentes` es {familia: monto} para no pisar lo que ya esté cargado.
+ */
+const FILA_FAMILIAS = 4 + 5 + 2;   // deja lugar para hasta 5 canales + un respiro
+function escribirBloqueFamilias_(sheet, existentes) {
+  var fila = Math.max(FILA_FAMILIAS, 4 + CANALES.length + 2);
+  var filas = LISTA_MARCAS.map(function (f) { return [f, (existentes && existentes[f]) || 0]; });
+  sheet.getRange(fila, 6).setValue("METAS POR FAMILIA").setFontWeight("bold").setFontColor("#2C7A7B");
+  sheet.getRange(fila + 1, 6, 1, 2).setValues([["Familia", "Monto Objetivo"]]).setFontWeight("bold");
+  // Se limpia el alto viejo por si la lista de familias se acortó.
+  var alto = Math.max(filas.length, 20);
+  sheet.getRange(fila + 2, 6, alto, 2).clearContent();
+  if (filas.length) {
+    sheet.getRange(fila + 2, 6, filas.length, 2).setValues(filas);
+    sheet.getRange(fila + 2, 7, filas.length, 1).setNumberFormat("₲ #,##0");
+  }
+}
+
+/** Lo que ya esté cargado en el bloque de familias, para no pisarlo. */
+function leerFamiliasConfig_(data) {
+  var out = {}, fila = -1;
+  for (var r = 0; r < data.length; r++) {
+    var v = String((data[r] && data[r][5]) || "").toUpperCase();
+    if (v.indexOf("METAS POR FAMILIA") === 0 || v.indexOf("METAS POR LÍNEA") === 0 || v.indexOf("METAS POR LINEA") === 0) { fila = r; break; }
+  }
+  if (fila < 0) return out;
+  for (var i = fila + 2; i < data.length; i++) {
+    var nombre = String((data[i] && data[i][5]) || "").trim();
+    if (!nombre) break;
+    out[nombre] = Number(data[i][6] || 0);
+  }
+  return out;
+}
+
 function crearEstructuraConfig(sheet) {
   sheet.clear(); sheet.getRange("A1").setValue("⚙️ PANEL CENTRAL").setFontWeight("bold"); sheet.getRange("A3").setValue("Fecha Inicio:"); sheet.getRange("A4").setValue("Fecha Fin:");
   var _hoy = new Date(), _tz = Session.getScriptTimeZone();
@@ -1091,7 +1143,7 @@ function crearEstructuraConfig(sheet) {
 
   sheet.getRange(4, 6, CANALES.length, 2).setValues(CANALES.map(c => [c, 0]));
 
-  sheet.getRange("F11").setValue("METAS POR LÍNEA").setFontWeight("bold").setFontColor("#2C7A7B"); sheet.getRange("F12:G12").setValues([["Categoría", "Monto Objetivo"]]).setFontWeight("bold"); sheet.getRange("F13:G14").setValues([["SUPLEMENTOS", 0], ["OTROS", 0]]);
+  escribirBloqueFamilias_(sheet, {});
   sheet.getRange("I2").setValue("METAS TOTALES POR VENDEDOR").setFontWeight("bold").setFontColor("#2C7A7B"); sheet.getRange("I3:J3").setValues([["Vendedor", "Monto Objetivo Total"]]).setFontWeight("bold"); sheet.getRange("J4:J50").setNumberFormat("₲ #,##0"); sheet.autoResizeColumns(1, 10);
 }
 
@@ -1169,17 +1221,13 @@ function onOpen() {
     .addSeparator()
     // Relevamiento de los tickets TI-0104 / TI-0106. Es sólo lectura y vive en
     // su propio archivo: si todavía no se pegó, el menú avisa en vez de fallar.
-    .addItem('🧭 Relevamiento TI-0104 / TI-0106 (sólo lectura)', 'relevamientoTicketsMenu_')
+    .addItem('🧭 Relevamiento de Odoo (TI-0104 / TI-0106)', 'relevamientoTickets')
+    .addSeparator()
+    .addItem('🗓️ Cerrar mes y replicar objetivos', 'replicarObjetivosMesNuevo')
+    .addItem('⏰ Activar réplica automática de objetivos', 'activarReplicaObjetivos')
+    .addItem('⏹️ Desactivar réplica automática de objetivos', 'desactivarReplicaObjetivos')
+    .addItem('ℹ️ Estado de la réplica de objetivos', 'estadoReplicaObjetivos')
     .addToUi();
-}
-
-function relevamientoTicketsMenu_() {
-  if (typeof relevamientoTickets !== "function") {
-    SpreadsheetApp.getUi().alert("Falta el archivo Relevamiento_TI0104_TI0106.gs.\n\n" +
-      "Pegalo como archivo nuevo en este mismo proyecto de Apps Script y volvé a abrir la planilla.");
-    return;
-  }
-  relevamientoTickets();
 }
 
 function dibujarDashboardEcommerce() {
@@ -1333,4 +1381,446 @@ function descubrirEstructuraVitalica() {
   hoja.getRange(1, 2, out.length, 1).setNumberFormat("#,##0");
   SpreadsheetApp.flush();
   ui.alert("\u2705 Listo. Mirá la hoja «" + HOJA_DESCUBRIMIENTO + "»: ahí están los equipos, vendedores, marcas y clientes reales de " + EMPRESA_NOMBRE + ".");
+}
+
+// ==================================================================
+//  🗓️ OBJETIVOS: CIERRE DE MES Y RÉPLICA AUTOMÁTICA  (ticket TI-0104)
+//
+//  Lo que pidió Comercial: que al terminar el mes los objetivos del mes
+//  siguiente arranquen con los mismos números del mes que cerró, para no
+//  cargar todo de cero, y que el mes cerrado quede guardado.
+//
+//  Qué hace replicarObjetivosMesNuevo():
+//   1. Toma el mes que figura hoy en CONFIG (Fecha Inicio) y lo guarda en el
+//      histórico (filas HISTORICO_B64_n, el mismo formato que lee la web app
+//      de objetivos). Es una foto: global, canales, familias, vendedores y
+//      vendedor × categoría.
+//   2. Mueve Fecha Inicio / Fecha Fin / Fecha Actual al mes en curso.
+//   3. NO toca los montos: por eso el mes nuevo arranca con los del anterior,
+//      y Comercial los ajusta desde la web app o desde la misma hoja.
+//
+//  Si el CONFIG ya está en el mes en curso no hace nada, así se puede correr
+//  dos veces sin duplicar.
+// ==================================================================
+
+function replicarObjetivosMesNuevo() {
+  var r = replicarObjetivos_(false);
+  if (SpreadsheetApp.getUi) SpreadsheetApp.getUi().alert(r.msg);
+  return r;
+}
+
+// La versión que corre sola el día 1 (sin ventanas de alerta).
+function replicarObjetivosAutomatico() { return replicarObjetivos_(true); }
+
+function replicarObjetivos_(silencioso) {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(30000); } catch (e) { return { ok: false, msg: "La planilla está ocupada, probá de nuevo." }; }
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName(HOJA_CONFIG);
+    if (!sh) return { ok: false, msg: "No encontré la hoja CONFIG." };
+    var data = sh.getDataRange().getValues();
+
+    var ini = objFecha_(data[2] && data[2][1]);          // B3 Fecha Inicio
+    if (!ini) return { ok: false, msg: "No pude leer la Fecha Inicio (B3) del CONFIG." };
+    var hoy = new Date();
+    if (ini.getFullYear() === hoy.getFullYear() && ini.getMonth() === hoy.getMonth()) {
+      return { ok: true, msg: "El CONFIG ya está en " + MESES_NOM_[hoy.getMonth()] + ": no hay nada que replicar." };
+    }
+
+    // 1) foto del mes que cierra
+    var foto = {
+      diasMes: Number(String(data[5] && data[5][1] || "").replace(",", ".")) || 0,
+      diasTranscurridos: Number(String(data[6] && data[6][1] || "").replace(",", ".")) || 0,
+      global: objNum_(data[3] && data[3][3]),
+      canales: {},
+      familias: {},
+      vendedoresTotales: {},
+      vendedorMarca: {}
+    };
+    for (var i = 3; i < data.length; i++) {
+      var c = String((data[i] && data[i][5]) || "").trim();
+      if (c && CANALES.indexOf(c) >= 0) foto.canales[c] = objNum_(data[i][6]);
+      var v = String((data[i] && data[i][8]) || "").trim();
+      if (v && v !== "Vendedor") foto.vendedoresTotales[v] = objNum_(data[i][9]);
+    }
+    foto.familias = leerFamiliasConfig_(data);
+    if (data[2]) {
+      for (var col = 11; col < data[2].length; col += 3) {
+        var vend = data[2][col] ? String(data[2][col]).trim() : "";
+        if (!vend) continue;
+        for (var rr = 4; rr < data.length; rr++) {
+          var cat = data[rr] && data[rr][col] ? String(data[rr][col]).trim() : "";
+          if (!cat || cat.indexOf("---") === 0 || cat.indexOf("[") === 0) continue;
+          foto.vendedorMarca[vend + "|||" + cat] = objNum_(data[rr][col + 1]);
+        }
+      }
+    }
+
+    var clave = ini.getFullYear() + "-" + String(ini.getMonth() + 1).padStart(2, "0");
+    var hist = objLeerHistorico_(data);
+    hist[clave] = foto;
+    objEscribirHistorico_(sh, data, hist);
+
+    // 2) el CONFIG pasa al mes en curso, con los mismos montos
+    var tz = Session.getScriptTimeZone();
+    var p1 = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    var pf = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+    sh.getRange("B3").setValue(Utilities.formatDate(p1, tz, "dd/MM/yyyy"));
+    sh.getRange("B4").setValue(Utilities.formatDate(pf, tz, "dd/MM/yyyy"));
+    sh.getRange("B5").setValue(Utilities.formatDate(hoy, tz, "dd/MM/yyyy"));
+    sh.getRange("A10").setValue("Objetivos replicados:").setFontWeight("bold").setFontColor("#2C7A7B");
+    sh.getRange("B10").setValue(Utilities.formatDate(hoy, tz, "dd/MM/yyyy HH:mm") + " desde " + clave);
+    SpreadsheetApp.flush();
+
+    return { ok: true, msg: "✅ " + clave + " quedó guardado en el histórico y " +
+      MESES_NOM_[hoy.getMonth()] + " arranca con esos mismos objetivos.\n\n" +
+      "Comercial los puede ajustar desde la web app de objetivos o en la misma hoja CONFIG." };
+  } catch (err) {
+    return { ok: false, msg: "No se pudo replicar: " + err.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+const MESES_NOM_ = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                    "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+function objFecha_(v) {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  var p = String(v).trim().split(" ")[0].split("/");
+  if (p.length === 3) return new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
+  p = String(v).trim().split("-");
+  if (p.length === 3) return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  return null;
+}
+function objNum_(v) {
+  if (v === "" || v === null || v === undefined) return 0;
+  var s = String(v).replace(/[^0-9,.-]/g, "").replace(/\./g, "");
+  if (s.indexOf(",") >= 0) s = s.split(",")[0];
+  return parseInt(s, 10) || 0;
+}
+/** Histórico guardado en las filas HISTORICO_B64_n (col A/B) de CONFIG. */
+function objLeerHistorico_(data) {
+  var chunks = [];
+  data.forEach(function (row) {
+    var c0 = String((row && row[0]) || "").trim();
+    if (c0.indexOf("HISTORICO_B64_") === 0) {
+      chunks.push({ i: parseInt(c0.replace("HISTORICO_B64_", ""), 10) || 0, v: String(row[1] || "").trim() });
+    }
+  });
+  if (!chunks.length) return {};
+  chunks.sort(function (a, b) { return a.i - b.i; });
+  try {
+    var json = Utilities.newBlob(Utilities.base64Decode(chunks.map(function (c) { return c.v; }).join(""))).getDataAsString();
+    return JSON.parse(json) || {};
+  } catch (e) { return {}; }
+}
+function objEscribirHistorico_(sh, data, hist) {
+  var b64 = Utilities.base64Encode(Utilities.newBlob(JSON.stringify(hist)).getBytes());
+  var CH = 45000, chunks = [];
+  for (var p = 0; p < b64.length; p += CH) chunks.push(b64.substr(p, CH));
+  for (var r = 0; r < data.length; r++) {
+    if (String((data[r] && data[r][0]) || "").indexOf("HISTORICO_B64_") === 0) {
+      sh.getRange(r + 1, 1).clearContent(); sh.getRange(r + 1, 2).clearContent();
+    }
+  }
+  SpreadsheetApp.flush();
+  var desde = sh.getLastRow() + 2;
+  for (var i = 0; i < chunks.length; i++) {
+    sh.getRange(desde + i, 1).setValue("HISTORICO_B64_" + i);
+    sh.getRange(desde + i, 2).setValue(chunks[i]);
+  }
+}
+
+function activarReplicaObjetivos() {
+  desactivarReplicaObjetivos();
+  ScriptApp.newTrigger("replicarObjetivosAutomatico").timeBased()
+    .onMonthDay(1).atHour(1).create();
+  SpreadsheetApp.getUi().alert("✅ Réplica automática activada.\n\nEl día 1 de cada mes, a la 1 de la mañana, " +
+    "el mes que cierra se guarda en el histórico y el mes nuevo arranca con los mismos objetivos.");
+}
+function desactivarReplicaObjetivos() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === "replicarObjetivosAutomatico") ScriptApp.deleteTrigger(t);
+  });
+}
+function estadoReplicaObjetivos() {
+  var hay = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === "replicarObjetivosAutomatico"; });
+  SpreadsheetApp.getUi().alert(hay
+    ? "La réplica automática está ACTIVA: corre el día 1 de cada mes a la 1 AM."
+    : "La réplica automática está APAGADA. Se prende desde el menú.");
+}
+
+// ============================================================================
+//  RELEVAMIENTO PARA LOS TICKETS TI-0104 (objetivos de Vitálica) y TI-0106
+//  (canales Unicentro y Tienda Naranja).  SOLO LECTURA.
+//
+//  Qué hace: le pregunta a Odoo cómo está armado hoy lo que los dos tickets
+//  tocan —equipos de venta, diarios, vendedores, familias de producto y los
+//  clientes de marketplace— en LAS DOS EMPRESAS, y lo escribe en una hoja
+//  nueva llamada RELEVAMIENTO. No crea, no modifica y no borra nada en Odoo:
+//  todas las llamadas son search_read / read.
+//
+//  Cómo usarlo:
+//   1. Pegá este archivo como archivo NUEVO en el MISMO proyecto de Apps
+//      Script de la planilla de Vitálica (ahí están ODOO_URL, execute_kw y la
+//      contraseña guardada: este archivo no las repite).
+//   2. Menú «🔄 Odoo Vitálica» ▸ «Relevamiento TI-0104 / TI-0106».
+//      Si el menú no aparece, ejecutá la función relevamientoTickets() desde
+//      el editor.
+//   3. Pasame la hoja RELEVAMIENTO (o una captura) y con eso armo la
+//      propuesta final.
+//
+//  Tarda un par de minutos: son varias consultas sobre todo 2026.
+// ============================================================================
+
+// Las dos empresas del grupo. Si alguna ID no fuera ésta, el relevamiento lo
+// dice igual: la primera sección lista las empresas con su ID real.
+const REL_EMPRESAS = [1, 2];
+const REL_DESDE = "2026-01-01";
+const REL_HOJA = "RELEVAMIENTO";
+
+// Nombres que nos interesan para los marketplaces (TI-0106). Se busca por
+// coincidencia parcial, sin distinguir mayúsculas.
+const REL_MARKETPLACES = ["UNICENTRO", "NARANJA", "TUPI", "PORTER", "CONTIMARKET", "MERCADO LIBRE", "MERCADOLIBRE"];
+
+function relevamientoTickets() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const pwd = getOdooPwd_();
+  const uid = login(ODOO_URL, ODOO_DB, ODOO_USER, pwd);
+  if (!uid) { SpreadsheetApp.getUi().alert("No se pudo entrar a Odoo."); return; }
+
+  const filas = [];
+  const titulo = (t) => { filas.push([]); filas.push(["════ " + t + " ════"]); };
+  const cab = (arr) => filas.push(arr);
+  const fila = (arr) => filas.push(arr);
+  const nota = (t) => filas.push(["· " + t]);
+
+  filas.push(["RELEVAMIENTO TI-0104 / TI-0106 · solo lectura · " +
+              Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm")]);
+
+  // ---------------------------------------------------------------- empresas
+  const empresas = {};
+  titulo("1. EMPRESAS");
+  cab(["ID", "Empresa", "Moneda"]);
+  try {
+    const cs = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "res.company", "search_read",
+      [[]], { fields: ["name", "currency_id"] }) || [];
+    cs.forEach(c => {
+      empresas[c.id] = c.name;
+      fila([c.id, c.name, c.currency_id ? c.currency_id[1] : ""]);
+    });
+  } catch (e) { nota("No se pudieron leer las empresas: " + e.message); }
+  const nomEmpresa = (id) => empresas[id] || ("empresa " + id);
+
+  // ------------------------------------------------- equipos de venta (canal)
+  // Así se identifica hoy el canal de una venta: por el equipo de ventas de la
+  // factura. Lo que importa para TI-0106 es si el equipo tiene empresa propia.
+  titulo("2. EQUIPOS DE VENTA (crm.team) · de acá sale el canal de cada venta");
+  cab(["ID", "Equipo", "Empresa del equipo", "Activo", "Responsable", "Facturas 2026", "Sin IVA 2026"]);
+  const equipos = {};
+  try {
+    const ts = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "crm.team", "search_read",
+      [[["active", "in", [true, false]]]],
+      { fields: ["name", "company_id", "active", "user_id"], limit: 500 }) || [];
+    ts.forEach(t => { equipos[t.id] = t; });
+    // Cuánto facturó cada equipo en 2026, para saber cuáles están vivos.
+    const porEquipo = relVentasPorCampo_(uid, pwd, "team_id");
+    ts.sort((a, b) => (porEquipo[b.id] ? porEquipo[b.id].monto : 0) - (porEquipo[a.id] ? porEquipo[a.id].monto : 0));
+    ts.forEach(t => {
+      const v = porEquipo[t.id] || { n: 0, monto: 0 };
+      fila([t.id, t.name, t.company_id ? t.company_id[1] : "(todas las empresas)",
+            t.active ? "sí" : "NO", t.user_id ? t.user_id[1] : "", v.n, Math.round(v.monto)]);
+    });
+    nota("Un equipo SIN empresa (vacío) se ve desde las dos: para que un canal quede sólo en su " +
+         "empresa, el equipo tiene que tener la empresa puesta.");
+  } catch (e) { nota("No se pudieron leer los equipos: " + e.message); }
+
+  // --------------------------------------------------------- diarios de venta
+  titulo("3. DIARIOS DE VENTA (account.journal)");
+  cab(["ID", "Diario", "Código", "Empresa", "Facturas 2026", "Sin IVA 2026"]);
+  try {
+    const js = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.journal", "search_read",
+      [[["type", "=", "sale"]]], { fields: ["name", "code", "company_id"], limit: 200 }) || [];
+    const porDiario = relVentasPorCampo_(uid, pwd, "journal_id");
+    js.forEach(j => {
+      const v = porDiario[j.id] || { n: 0, monto: 0 };
+      fila([j.id, j.name, j.code, j.company_id ? j.company_id[1] : "", v.n, Math.round(v.monto)]);
+    });
+  } catch (e) { nota("No se pudieron leer los diarios: " + e.message); }
+
+  // ---------------------------------------------------------------- vendedores
+  titulo("4. VENDEDORES CON FACTURACIÓN 2026 (invoice_user_id), por empresa");
+  cab(["Empresa", "Vendedor", "Equipo que más usa", "Facturas", "Sin IVA 2026"]);
+  try {
+    REL_EMPRESAS.forEach(cid => {
+      const vend = relVendedores_(uid, pwd, cid);
+      vend.forEach(v => fila([nomEmpresa(cid), v.nombre, v.equipo, v.n, Math.round(v.monto)]));
+      if (!vend.length) nota("Sin facturación 2026 en " + nomEmpresa(cid));
+    });
+  } catch (e) { nota("No se pudieron leer los vendedores: " + e.message); }
+
+  // -------------------------------------------- familias (categorías) Vitálica
+  titulo("5. FAMILIAS DE PRODUCTO CON VENTA 2026 (product.category), por empresa");
+  cab(["Empresa", "Familia / categoría", "Líneas", "Unidades", "Sin IVA 2026"]);
+  try {
+    REL_EMPRESAS.forEach(cid => {
+      const fams = relFamilias_(uid, pwd, cid);
+      fams.forEach(f => fila([nomEmpresa(cid), f.nombre, f.lineas, f.unidades, Math.round(f.monto)]));
+      if (!fams.length) nota("Sin venta 2026 en " + nomEmpresa(cid));
+    });
+    nota("Ésta es la lista con la que se pueden cargar objetivos por familia (TI-0104).");
+  } catch (e) { nota("No se pudieron leer las familias: " + e.message); }
+
+  // ------------------------------------------------- clientes de marketplace
+  titulo("6. CLIENTES DE MARKETPLACE (Unicentro, Tienda Naranja y los que ya existen)");
+  cab(["Empresa", "Cliente", "RUC", "Facturas 2026", "Sin IVA 2026", "Equipo que más usa"]);
+  let encontrados = 0;
+  try {
+    REL_MARKETPLACES.forEach(nombre => {
+      const r = relClientesPorNombre_(uid, pwd, nombre);
+      r.forEach(x => { encontrados++; fila([nomEmpresa(x.company), x.cliente, x.ruc, x.n, Math.round(x.monto), x.equipo]); });
+    });
+    if (!encontrados) nota("No hay ningún cliente cargado con esos nombres: Unicentro y Tienda Naranja " +
+                           "todavía no se identifican por cliente.");
+  } catch (e) { nota("No se pudieron buscar los clientes: " + e.message); }
+
+  // ------------------------------------------------------- etiquetas (Studio)
+  titulo("7. ETIQUETAS DE FACTURA (campo Studio), si existe");
+  try {
+    const flds = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "fields_get", [], { attributes: ["string", "type"] }) || {};
+    let campo = "";
+    Object.keys(flds).forEach(fn => {
+      const lbl = (flds[fn] && flds[fn].string ? flds[fn].string : "").toUpperCase();
+      if (!campo && (lbl === "ETIQUETAS" || (fn.indexOf("x_studio") === 0 && lbl.indexOf("ETIQUETA") >= 0))) campo = fn;
+    });
+    if (!campo) { nota("La factura no tiene campo de etiquetas: no se puede usar para marcar el canal."); }
+    else {
+      cab(["Empresa", "Etiqueta", "Facturas 2026"]);
+      const moves = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "search_read",
+        [[["move_type", "in", ["out_invoice", "out_refund"]], ["state", "=", "posted"],
+          ["invoice_date", ">=", REL_DESDE], ["company_id", "in", REL_EMPRESAS]]],
+        { fields: ["company_id", campo], limit: 20000 }) || [];
+      const acc = {};
+      moves.forEach(m => {
+        const v = Array.isArray(m[campo]) ? (m[campo][1] || "") : String(m[campo] || "");
+        if (!v) return;
+        const k = (m.company_id ? m.company_id[0] : 0) + "|" + v;
+        acc[k] = (acc[k] || 0) + 1;
+      });
+      Object.keys(acc).sort().forEach(k => {
+        const p = k.split("|");
+        fila([nomEmpresa(+p[0]), p[1], acc[k]]);
+      });
+      if (!Object.keys(acc).length) nota("El campo existe (" + campo + ") pero no está cargado en ninguna factura de 2026.");
+    }
+  } catch (e) { nota("No se pudieron leer las etiquetas: " + e.message); }
+
+  // ------------------------------------------------------------------ escribir
+  let sh = ss.getSheetByName(REL_HOJA);
+  if (!sh) sh = ss.insertSheet(REL_HOJA); else sh.clear();
+  const ancho = filas.reduce((m, f) => Math.max(m, f.length), 1);
+  const normal = filas.map(f => { const c = f.slice(); while (c.length < ancho) c.push(""); return c; });
+  sh.getRange(1, 1, normal.length, ancho).setValues(normal);
+  sh.setFrozenRows(1);
+  sh.autoResizeColumns(1, Math.min(ancho, 8));
+  ss.setActiveSheet(sh);
+  SpreadsheetApp.getUi().alert("✅ Relevamiento listo en la hoja " + REL_HOJA + ".\n\n" +
+    "No se modificó nada en Odoo: fueron todas consultas de lectura.");
+}
+
+// Cuánto facturó 2026 agrupado por un campo de la FACTURA (team_id, journal_id…).
+function relVentasPorCampo_(uid, pwd, campo) {
+  const moves = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "search_read",
+    [[["move_type", "in", ["out_invoice", "out_refund"]], ["state", "=", "posted"],
+      ["invoice_date", ">=", REL_DESDE], ["company_id", "in", REL_EMPRESAS]]],
+    { fields: [campo, "amount_untaxed_signed"], limit: 40000 }) || [];
+  const acc = {};
+  moves.forEach(m => {
+    const v = m[campo]; if (!v) return;
+    const id = Array.isArray(v) ? v[0] : v;
+    if (!acc[id]) acc[id] = { n: 0, monto: 0 };
+    acc[id].n++; acc[id].monto += Number(m.amount_untaxed_signed || 0);
+  });
+  return acc;
+}
+
+// Vendedores con facturación 2026 en una empresa, con el equipo que más usan.
+function relVendedores_(uid, pwd, companyId) {
+  const moves = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "search_read",
+    [[["move_type", "in", ["out_invoice", "out_refund"]], ["state", "=", "posted"],
+      ["invoice_date", ">=", REL_DESDE], ["company_id", "=", companyId]]],
+    { fields: ["invoice_user_id", "team_id", "amount_untaxed_signed"], limit: 40000 }) || [];
+  const acc = {};
+  moves.forEach(m => {
+    const nombre = m.invoice_user_id ? m.invoice_user_id[1] : "(sin vendedor)";
+    if (!acc[nombre]) acc[nombre] = { nombre: nombre, n: 0, monto: 0, equipos: {} };
+    acc[nombre].n++;
+    acc[nombre].monto += Number(m.amount_untaxed_signed || 0);
+    const eq = m.team_id ? m.team_id[1] : "(sin equipo)";
+    acc[nombre].equipos[eq] = (acc[nombre].equipos[eq] || 0) + 1;
+  });
+  return Object.keys(acc).map(k => {
+    const v = acc[k];
+    v.equipo = Object.keys(v.equipos).sort((a, b) => v.equipos[b] - v.equipos[a])[0] || "";
+    return v;
+  }).sort((a, b) => b.monto - a.monto);
+}
+
+// Familias (categoría del producto) con venta 2026 en una empresa.
+function relFamilias_(uid, pwd, companyId) {
+  const lineas = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move.line", "search_read",
+    [[["move_id.move_type", "in", ["out_invoice", "out_refund"]], ["move_id.state", "=", "posted"],
+      ["move_id.company_id", "=", companyId], ["date", ">=", REL_DESDE], ["product_id", "!=", false]]],
+    { fields: ["product_id", "quantity", "price_subtotal"], limit: 60000 }) || [];
+  if (!lineas.length) return [];
+  const ids = [...new Set(lineas.map(l => l.product_id[0]))];
+  const prods = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "product.product", "read",
+    [ids], { fields: ["categ_id"] }) || [];
+  const catDe = {};
+  prods.forEach(p => { catDe[p.id] = p.categ_id ? p.categ_id[1] : "(sin categoría)"; });
+  const acc = {};
+  lineas.forEach(l => {
+    const c = catDe[l.product_id[0]] || "(sin categoría)";
+    if (!acc[c]) acc[c] = { nombre: c, lineas: 0, unidades: 0, monto: 0 };
+    acc[c].lineas++;
+    acc[c].unidades += Number(l.quantity || 0);
+    acc[c].monto += Number(l.price_subtotal || 0);
+  });
+  return Object.keys(acc).map(k => acc[k]).sort((a, b) => b.monto - a.monto);
+}
+
+// Clientes cuyo nombre contiene un texto, con su facturación 2026 por empresa.
+function relClientesPorNombre_(uid, pwd, texto) {
+  const partners = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "res.partner", "search_read",
+    [[["name", "ilike", texto]]], { fields: ["name", "vat"], limit: 100 }) || [];
+  if (!partners.length) return [];
+  const ids = partners.map(p => p.id);
+  const nombreDe = {}, rucDe = {};
+  partners.forEach(p => { nombreDe[p.id] = p.name; rucDe[p.id] = p.vat || ""; });
+  const moves = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "search_read",
+    [[["move_type", "in", ["out_invoice", "out_refund"]], ["state", "=", "posted"],
+      ["invoice_date", ">=", REL_DESDE], ["company_id", "in", REL_EMPRESAS],
+      ["partner_id", "in", ids]]],
+    { fields: ["partner_id", "company_id", "team_id", "amount_untaxed_signed"], limit: 20000 }) || [];
+  const acc = {};
+  // Un cliente sin ventas también interesa: dice que existe pero no factura.
+  partners.forEach(p => {
+    acc[p.id + "|0"] = { cliente: p.name, ruc: rucDe[p.id], company: 0, n: 0, monto: 0, equipos: {} };
+  });
+  moves.forEach(m => {
+    const pid = m.partner_id[0], cid = m.company_id ? m.company_id[0] : 0;
+    const k = pid + "|" + cid;
+    if (!acc[k]) acc[k] = { cliente: nombreDe[pid] || m.partner_id[1], ruc: rucDe[pid] || "", company: cid, n: 0, monto: 0, equipos: {} };
+    acc[k].n++; acc[k].monto += Number(m.amount_untaxed_signed || 0);
+    const eq = m.team_id ? m.team_id[1] : "(sin equipo)";
+    acc[k].equipos[eq] = (acc[k].equipos[eq] || 0) + 1;
+  });
+  return Object.keys(acc).map(k => {
+    const v = acc[k];
+    v.equipo = Object.keys(v.equipos).sort((a, b) => v.equipos[b] - v.equipos[a])[0] || "";
+    return v;
+  }).filter(v => v.n > 0 || v.company === 0);
 }

@@ -495,7 +495,10 @@ const PLAN_VERDE = 95, PLAN_AMBAR = 75;
 // La venta AL gimnasio (reposición de sachets y demás) es venta mayorista: no
 // tiene canal propio. "Convenio Gimnasios" quedó como una PÁGINA aparte, la de
 // los cupones, que no es venta del canal sino comisión a pagar.
-const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce"];
+// TI-0106: Tienda Naranja es un canal propio (marketplace), al mismo nivel que
+// E-commerce y con su objetivo mensual aparte. El de Camping 44 es Unicentro y
+// vive en el informe de Camping 44: cada canal queda sólo en su empresa.
+const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce", "Tienda Naranja"];
 
 // Canales que se muestran unificados. Se aplica acá también (no solo en el Apps
 // Script) para que tenga efecto inmediato, sin esperar el re-sync de la planilla.
@@ -575,6 +578,8 @@ const DIAS_RECONTACTO = 30;
 // =====================================================================
 
 const CANAL_POR_CLIENTE = [
+  // Si la venta del marketplace se factura a Tienda Naranja como cliente.
+  { match: "TIENDA NARANJA", canal: "Tienda Naranja" },
   // Los gimnasios compran para revender: su factura es venta mayorista.
   { match: "BAMBU",    canal: "Mayorista" },
   { match: "BAMBÚ",    canal: "Mayorista" },
@@ -587,7 +592,8 @@ const CANAL_POR_CLIENTE = [
   { match: "VENTURIO", canal: "Mayorista" }
 ];
 const ICONO_CANAL = {
-  "Mayorista": "🏢", "Consumidor Final": "🛍️", "Sin Comisiones": "📄", "E-commerce": "🛒"
+  "Mayorista": "🏢", "Consumidor Final": "🛍️", "Sin Comisiones": "📄",
+  "E-commerce": "🛒", "Tienda Naranja": "🍊"
 };
 
 // Un cliente es ACTIVO si compró en los últimos N meses.
@@ -1061,7 +1067,7 @@ function leerConfig(d) {
   const m = {
     fIni: aFecha(cel(2, 1)), fFin: aFecha(cel(3, 1)), fCorte: aFecha(cel(4, 1)),
     diasMes: aNumero(cel(5, 1)), diasTranscurridos: aNumero(cel(6, 1)),
-    global: aNumero(cel(3, 3)), canales: {}, vendedores: {}, vendedorCategoria: {}
+    global: aNumero(cel(3, 3)), canales: {}, familias: {}, vendedores: {}, vendedorCategoria: {}
   };
   for (let i = 3; i < d.length; i++) {
     // El canal de CONFIG puede venir con el nombre viejo: se traduce igual que en la DATA.
@@ -1084,7 +1090,24 @@ function leerConfig(d) {
       }
     }
   }
-  const hayMetas = m.global > 0 || Object.values(m.canales).some(v => v > 0) || Object.values(m.vendedores).some(v => v > 0);
+  // Metas por FAMILIA: el bloque de la columna F que arranca en «METAS POR
+  // FAMILIA» (antes se llamaba «METAS POR LÍNEA» y no lo leía nadie).
+  m.familias = {};
+  let filaFam = -1;
+  for (let i = 0; i < d.length; i++) {
+    const t = norm(d[i] && d[i][5]);
+    if (t.indexOf("METAS POR FAMILIA") === 0 || t.indexOf("METAS POR LINEA") === 0) { filaFam = i; break; }
+  }
+  if (filaFam >= 0) {
+    for (let i = filaFam + 2; i < d.length; i++) {
+      const nombre = String((d[i] && d[i][5]) || "").trim();
+      if (!nombre) break;                       // el bloque termina en la primera fila vacía
+      const v = aNumero(d[i][6]);
+      if (v > 0) m.familias[nombre] = v;
+    }
+  }
+  const hayMetas = m.global > 0 || Object.values(m.canales).some(v => v > 0) ||
+                   Object.values(m.vendedores).some(v => v > 0) || Object.values(m.familias).some(v => v > 0);
   m.hayMetas = hayMetas;
   return m;
 }
@@ -2693,7 +2716,8 @@ let ROT = null, ROT_ESTADO = "";                    // "" · "cargando" · "ok" 
    acá se traduce igual que allá. Si se cambian las reglas en el Apps Script,
    hay que cambiarlas también acá. */
 const MAPEO_CANAL_ODOO = [
-  ["MUESTRARIO", "Convenio Gimnasios"], ["GIMNASIO", "Convenio Gimnasios"],
+  ["TIENDA NARANJA", "Tienda Naranja"], ["NARANJA", "Tienda Naranja"],
+  ["MUESTRARIO", "Mayorista"], ["GIMNASIO", "Mayorista"],
   ["MAYORISTA", "Mayorista"], ["DISTRIBUIDOR", "Mayorista"], ["DISTRIBUCION", "Mayorista"],
   ["CONSUMIDOR FINAL", "Consumidor Final"], ["SALES", "Consumidor Final"],
   ["SIN COMISION", "Sin Comisiones"], ["E-COMMERCE", "E-commerce"], ["ECOMMERCE", "E-commerce"]
@@ -3558,6 +3582,8 @@ function renderObjetivos(datos) {
   h += '<div class="grid2">' +
     '<div class="card"><h3>Avance por Canal</h3><table id="t-obj-canal"></table></div>' +
     '<div class="card"><h3>Avance por Vendedor</h3><div class="tbl-scroll"><table id="t-obj-vend"></table></div></div>' +
+    '<div class="card"><h3>Avance por Familia <small>objetivo por familia de productos</small></h3>' +
+    '<div class="tbl-scroll"><table id="t-obj-fam"></table></div></div>' +
     '<div class="card" style="grid-column:1/-1"><h3>Avance por Vendedor y Categoría</h3>' +
     '<div class="tbl-scroll"><table id="t-obj-cat"></table></div></div></div>';
   cont.innerHTML = h;
@@ -3565,6 +3591,9 @@ function renderObjetivos(datos) {
   const ventasPor = (campo) => { const a = {}; datos.forEach(r => a[r[campo]] = (a[r[campo]] || 0) + r.monto); return a; };
   tablaAvance("t-obj-canal", METAS.canales, ventasPor("canal"), "Canal", dMes, dTr);
   tablaAvance("t-obj-vend", METAS.vendedores, ventasPor("vendedor"), "Vendedor", dMes, dTr);
+  // La familia del informe es la categoría del producto en Odoo: la misma con
+  // la que se arman los rankings, así el objetivo y la venta hablan de lo mismo.
+  tablaAvance("t-obj-fam", METAS.familias || {}, ventasPor("categoria"), "Familia", dMes, dTr);
 
   const ventasVendCat = {};
   datos.forEach(r => { const k = r.vendedor + "|||" + r.categoria; ventasVendCat[k] = (ventasVendCat[k] || 0) + r.monto; });
