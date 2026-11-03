@@ -505,6 +505,29 @@ const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce"
 // "Gimnasios y Muestrarios" pasó a llamarse "Convenio Gimnasios" (ahí ya no hay
 // muestrarios). Lo que la planilla tenga escrito con el nombre viejo se muestra
 // con el nuevo, así no quedan dos canales hasta que se regenere la DATA.
+/**
+ * Notas de crédito que no entran.
+ *
+ * Las 18 del 28/02/2026 a Garage Cross (001-001-0000001 a 0000018, ₲62.314.299)
+ * revierten facturas que este informe no tiene: son de 2025. Sin su factura,
+ * restan un agujero que nunca fue venta de 2026 y hundían el canal. En Odoo no
+ * quedaron enlazadas a la factura que anulan, así que la regla automática del
+ * Apps Script no las puede detectar y hay que nombrarlas.
+ *
+ * Se filtran acá además de en el Apps Script para que valga aunque la planilla
+ * no se haya regenerado. Sólo se descartan si son nota de crédito del año que
+ * dice NC_EXCLUIDAS_ANIO: un número de documento se repite entre talonarios.
+ */
+const NC_EXCLUIDAS = [
+  "001-001-0000001", "001-001-0000002", "001-001-0000003",
+  "001-001-0000004", "001-001-0000005", "001-001-0000006",
+  "001-001-0000007", "001-001-0000008", "001-001-0000009",
+  "001-001-0000010", "001-001-0000011", "001-001-0000012",
+  "001-001-0000013", "001-001-0000014", "001-001-0000015",
+  "001-001-0000016", "001-001-0000017", "001-001-0000018"
+];
+const NC_EXCLUIDAS_ANIO = 2026;
+
 const UNIFICAR_CANALES = {
   "Distribuidor": "Mayorista",
   // Lo que la planilla tenga escrito con los nombres viejos entra como mayorista,
@@ -925,6 +948,9 @@ function normalizarData(filas) {
     const r = filas[i];
     if (!r || r.length < 31 || !r[1]) continue;
     const f = aFecha(r[1]); if (!f) continue;
+    // Notas de crédito sin su factura: ver NC_EXCLUIDAS.
+    if (String(r[5]).toUpperCase().includes("CR") && f.getFullYear() === NC_EXCLUIDAS_ANIO &&
+        NC_EXCLUIDAS.includes(String(r[6] || "").trim())) continue;
     const vend = soloNombre(r[17]) || "Sin Vendedor";
     if (contieneAlguna(vend, VENDEDORES_EXCLUIDOS_DASH)) continue;
     if (contieneAlguna(r[19], CATEGORIAS_EXCLUIDAS_DASH)) continue;

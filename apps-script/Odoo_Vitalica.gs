@@ -119,8 +119,17 @@ const EXCLUIR_NC_SIN_SU_FACTURA = true;
 // 🚫 Válvula manual: si alguna nota de crédito vieja no quedó enlazada a su
 //    factura en Odoo (se cargó a mano, sin usar "Revertir"), la regla de arriba
 //    no la puede detectar. Se la saca por número acá.
-//    Ejemplo: ["001-001-0000001", "001-001-0000002"]
-const NC_EXCLUIDAS = [];
+//    Son las 18 del 28/02/2026 a Garage Cross (₲62.314.299): revierten facturas
+//    de 2025 que este informe no tiene, y en Odoo no quedaron enlazadas a la
+//    factura que anulan, así que la regla de arriba no las puede ver.
+const NC_EXCLUIDAS = [
+  "001-001-0000001", "001-001-0000002", "001-001-0000003",
+  "001-001-0000004", "001-001-0000005", "001-001-0000006",
+  "001-001-0000007", "001-001-0000008", "001-001-0000009",
+  "001-001-0000010", "001-001-0000011", "001-001-0000012",
+  "001-001-0000013", "001-001-0000014", "001-001-0000015",
+  "001-001-0000016", "001-001-0000017", "001-001-0000018"
+];
 
 // 🚫 Clientes que no se traen. Vacío = se traen todos.
 //    Bambu, Garage Cross, GTC Bigg y Lichton/Fitway SÍ tienen que sumar:
