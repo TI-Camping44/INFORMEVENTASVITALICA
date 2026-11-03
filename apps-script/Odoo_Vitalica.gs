@@ -157,10 +157,6 @@ const CANAL_POR_DEFECTO = "Consumidor Final";
 //    OJO con el orden: "Muestrario - Gimnasio" tiene que caer en Gimnasios y
 //    Mayorista, igual que el resto de la venta al gimnasio.
 const MAPEO_CANALES = [
-  // Primero Tienda Naranja: si el equipo se llamara "E-commerce Tienda Naranja",
-  // tiene que ganar el canal más específico.
-  { match: "TIENDA NARANJA",   canal: "Tienda Naranja" },
-  { match: "NARANJA",          canal: "Tienda Naranja" },
   { match: "MUESTRARIO",       canal: "Mayorista" },
   { match: "GIMNASIO",         canal: "Mayorista" },
   { match: "MAYORISTA",        canal: "Mayorista" },
@@ -184,8 +180,8 @@ const MAPEO_CANALES = [
 //    nombres de las sucursales que no repiten el de la casa matriz
 //    (ej. "GTC- FERNANDO ZONA SUR" no dice "GARAGE").
 const CANAL_POR_CLIENTE = [
-  // Si la venta de Tienda Naranja se factura al marketplace como cliente (y no
-  // con el equipo de ventas), igual cae en su canal.
+  // TI-0106: Tienda Naranja se identifica por el CLIENTE de la factura, igual
+  // que los marketplaces de Camping 44. No se usa equipo de ventas.
   { match: "TIENDA NARANJA", canal: "Tienda Naranja" },
   { match: "BAMBU",    canal: "Mayorista" },
   { match: "BAMBÚ",    canal: "Mayorista" },
