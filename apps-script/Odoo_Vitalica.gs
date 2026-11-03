@@ -1166,7 +1166,20 @@ function onOpen() {
     .addSeparator()
     .addItem('🔐 Configurar credenciales de Odoo', 'configurarCredencialesOdoo')
     .addItem('⚠️ Restaurar Estructura CONFIG', 'restaurarConfig')
+    .addSeparator()
+    // Relevamiento de los tickets TI-0104 / TI-0106. Es sólo lectura y vive en
+    // su propio archivo: si todavía no se pegó, el menú avisa en vez de fallar.
+    .addItem('🧭 Relevamiento TI-0104 / TI-0106 (sólo lectura)', 'relevamientoTicketsMenu_')
     .addToUi();
+}
+
+function relevamientoTicketsMenu_() {
+  if (typeof relevamientoTickets !== "function") {
+    SpreadsheetApp.getUi().alert("Falta el archivo Relevamiento_TI0104_TI0106.gs.\n\n" +
+      "Pegalo como archivo nuevo en este mismo proyecto de Apps Script y volvé a abrir la planilla.");
+    return;
+  }
+  relevamientoTickets();
 }
 
 function dibujarDashboardEcommerce() {
