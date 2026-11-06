@@ -67,21 +67,20 @@ function wa_canalDesdeRaw(raw) {
   if (!m) return "";
   return wa_canalReal("", m[1]);
 }
+// Devuelve el canal de VITÁLICA (los mismos nombres que WA_CANALES y que el
+// informe). Esta función venía copiada de Camping 44 (Mayoristas, Salon,
+// Online...) y no reconocía ningún canal de Vitálica salvo E-commerce: la web
+// app mostraba los objetivos en 0 y, al guardar, borraba el canal de cada
+// vendedor en la columna K del CONFIG. Las reglas siguen al informe:
+// Distribuidor y los gimnasios cuentan como Mayorista.
 function wa_canalReal(vendedor, canalCSV) {
   var v = wa_limpiarNombre(vendedor), c = wa_limpiarNombre(canalCSV);
-  // Clientes/grupos de E-commerce: Contimarket (= Julia Olmedo), Tupi y Porter caen siempre en E-commerce.
-  if (v.indexOf("CONTIMARKET") >= 0 || c.indexOf("CONTIMARKET") >= 0) return "E-commerce";
-  if (v.indexOf("TUPI") >= 0 || c.indexOf("TUPI") >= 0) return "E-commerce";
-  if (v.indexOf("PORTER") >= 0 || c.indexOf("PORTER") >= 0) return "E-commerce";
-  if (v.indexOf("JULIA OLMEDO") >= 0) return "E-commerce";
   var t = (v + " " + c);
-  if (t.indexOf("DIRECTORIO") >= 0) return "Directorio";
-  if (t.indexOf("EXTERNA") >= 0) return "Venta Externa";
-  if (t.indexOf("REPARACION") >= 0 || t.indexOf("TALLER") >= 0 || t.indexOf("SERVICIO") >= 0) return "Reparaciones";
-  if (t.indexOf("MAYORISTA") >= 0) return "Mayoristas";
-  if (t.indexOf("ECOMMERCE") >= 0 || t.indexOf("E-COMMERCE") >= 0) return "E-commerce";
-  if (t.indexOf("ONLINE") >= 0) return "Online";
-  if (t.indexOf("SALON") >= 0) return "Salon";
+  if (t.indexOf("TIENDA NARANJA") >= 0) return "Tienda Naranja";
+  if (t.indexOf("SIN COMISION") >= 0) return "Sin Comisiones";
+  if (t.indexOf("ECOMMERCE") >= 0 || t.indexOf("E-COMMERCE") >= 0 || t.indexOf("E COMMERCE") >= 0) return "E-commerce";
+  if (t.indexOf("MAYORISTA") >= 0 || t.indexOf("DISTRIBUIDOR") >= 0 || t.indexOf("GIMNASIO") >= 0) return "Mayorista";
+  if (t.indexOf("CONSUMIDOR FINAL") >= 0) return "Consumidor Final";
   return "";
 }
 function wa_parseCSV(text) {
