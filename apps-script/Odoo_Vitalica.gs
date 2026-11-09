@@ -925,9 +925,11 @@ function dibujarDashboard() {
 
   let rStartTablasMedio = 16;
   dashSheet.getRange(rStartTablasMedio, 2, 1, 2).merge().setValue("🔍 DESGLOSE DE COMPROBANTES").setFontWeight("bold").setBackground("#2C7A7B").setFontColor("#FFFFFF").setHorizontalAlignment("center");
-  dashSheet.getRange(rStartTablasMedio+1, 2).setValue("Total Facturas (Venta Bruta)").setFontWeight("bold").setBackground("#EDF2F7"); dashSheet.getRange(rStartTablasMedio+1, 3).setValue(totalVentasBrutas).setNumberFormat("#,##0").setFontColor("green");
-  dashSheet.getRange(rStartTablasMedio+2, 2).setValue("Total Notas de Crédito").setFontWeight("bold").setBackground("#EDF2F7"); dashSheet.getRange(rStartTablasMedio+2, 3).setValue(totalNotasCredito).setNumberFormat("#,##0").setFontColor("red");
-  dashSheet.getRange(rStartTablasMedio+3, 2).setValue("VENTA NETA (Real)").setFontWeight("bold").setBackground("#E2E8F0"); dashSheet.getRange(rStartTablasMedio+3, 3).setValue(vTotalCia).setFontWeight("bold").setNumberFormat("#,##0").setBackground("#E2E8F0");
+  // La VENTA NETA va primero (ticket TI-0110): es el número que vale. La bruta
+  // y las notas quedan debajo, para poder cuadrar contra Odoo.
+  dashSheet.getRange(rStartTablasMedio+1, 2).setValue("VENTA NETA (Real)").setFontWeight("bold").setBackground("#E2E8F0"); dashSheet.getRange(rStartTablasMedio+1, 3).setValue(vTotalCia).setFontWeight("bold").setNumberFormat("#,##0").setBackground("#E2E8F0").setFontColor("#047a55");
+  dashSheet.getRange(rStartTablasMedio+2, 2).setValue("Total Facturas (Venta Bruta)").setFontWeight("bold").setBackground("#EDF2F7"); dashSheet.getRange(rStartTablasMedio+2, 3).setValue(totalVentasBrutas).setNumberFormat("#,##0").setFontColor("#4A5568");
+  dashSheet.getRange(rStartTablasMedio+3, 2).setValue("Total Notas de Crédito").setFontWeight("bold").setBackground("#EDF2F7"); dashSheet.getRange(rStartTablasMedio+3, 3).setValue(totalNotasCredito).setNumberFormat("#,##0").setFontColor("red");
   dashSheet.getRange(`B${rStartTablasMedio}:C${rStartTablasMedio+3}`).setBorder(true, true, true, true, true, true, "#CBD5E0", SpreadsheetApp.BorderStyle.SOLID);
 
   rStartTablasMedio += 5;
