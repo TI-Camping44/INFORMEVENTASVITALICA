@@ -356,8 +356,9 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
       tienen factura: muestrarios y entregas pendientes de facturar) se cuenta aparte y se puede
       sumar con el filtro «Documento».
       «Clientes activos» = clientes que compraron en los últimos <b id="nmeses-activo">3</b> meses.
-      Las tablas muestran la venta <b>neta</b>: a cada producto, cliente, vendedor, categoría y canal ya
-      se le restaron sus notas de crédito, y los que tienen devoluciones llevan la marca ↩. Para ver
+      <b>Todo el informe muestra la venta NETA</b>: a cada producto, cliente, vendedor, categoría, canal,
+      mes y gráfico ya se le restaron sus notas de crédito, y los que tienen devoluciones llevan la
+      marca ↩. El bruto queda abajo del neto, en chico, para cuadrar contra Odoo. Para ver
       de dónde sale cada número de un producto, está la pestaña <b>🔍 Auditoría de Producto</b>.
       Cuánto queda de cada producto y para cuántos meses alcanza está en
       <b>📦 Stock y Rotación</b>, con estos mismos filtros: ya no hace falta abrir el otro tablero.
@@ -1236,8 +1237,7 @@ function refrescarOpciones() {
     const cont = document.getElementById(id); if (!cont) return;
     const monto = {};
     filtrar(false, clave).forEach(r => {
-      if (r.esNC) return;
-      const k = r[campo]; if (k) monto[k] = (monto[k] || 0) + r.monto;
+      const k = r[campo]; if (k) monto[k] = (monto[k] || 0) + r.monto;   // neto, como todo el informe
     });
     const elegidos = filtros[clave] || [];
     const verVacios = cont.dataset.vacios === "1";
@@ -1678,7 +1678,7 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
   const top = filas.slice(0, opts.topN || TOP_N);
 
   let h = "<thead><tr><th class='idx'>#</th>" + th("clave", encabezado, "col-nombre") +
-    th("monto", "Sin IVA PYG", "num w-monto");
+    th("monto", "Neto s/IVA PYG", "num w-monto");
   if (opts.cantidad) h += th("cantidad", "Cantidad", "num w-cant");
   if (opts.facturas) h += th("facturas", "Facturas", "num w-fact");
   // Sólo el stock: la cobertura en meses, acá sin la explicación al lado, se
@@ -1735,25 +1735,29 @@ function calcularKPIs(datos) {
   });
   // "Promedio de Tickets": el Looker usa el promedio (AVG) del monto sin IVA por
   // línea de factura, no monto ÷ facturas. Se replica igual.
-  return { monto, nc, lineas, montoRemision, lineasRemision, facturas: facturas.size,
+  // El promedio por línea también va neto: si no, un mes con devoluciones
+  // grandes mostraba un ticket que nadie facturó.
+  const neto = monto + nc;
+  return { monto, nc, neto, lineas, montoRemision, lineasRemision, facturas: facturas.size,
            remisiones: remisiones.size, clientes: clientes.size, activos: clientesActivos.size,
-           unidades: cantUnidades, ticket: lineas ? monto / lineas : 0, corte };
+           unidades: cantUnidades, ticket: lineas ? neto / lineas : 0, corte };
 }
 function renderKPIs(k, kRem) {
   const soloFacturas = filtros.doc === "factura";
-  // Los tres primeros se leen como una cuenta: facturado, menos devoluciones,
-  // igual neto. El neto es el número que coincide con las tablas de abajo, que
-  // ya vienen netas; el facturado solo es el bruto.
+  // El número que manda es el NETO (pedido de Comercial): es el que de verdad
+  // se facturó y el que coincide con todas las tablas y gráficos de abajo. El
+  // bruto no desaparece —se necesita para cuadrar contra Odoo— pero va como
+  // renglón chico debajo del neto, para que no compita.
   document.getElementById("kpis").innerHTML =
-    kpi(soloFacturas ? "Monto Facturado s/IVA" : "Monto s/IVA", gs(k.monto),
-      num(k.unidades) + " unidades" + (!soloFacturas && k.montoRemision ? " · incl. " + gs(k.montoRemision) + " en muestrarios" : "")) +
+    kpi(soloFacturas ? "Facturado Neto s/IVA" : "Neto s/IVA", gs(k.neto),
+      num(k.unidades) + " unidades · bruto " + gs(k.monto) +
+      (!soloFacturas && k.montoRemision ? " · incl. " + gs(k.montoRemision) + " en muestrarios" : ""),
+      false, "neto") +
     kpi("Notas de Crédito", gs(k.nc), pct(Math.abs(k.nc), k.monto).toFixed(1) + "% de la venta", true) +
-    kpi(soloFacturas ? "Facturado Neto" : "Neto s/IVA", gs(k.monto + k.nc),
-      "facturado menos notas de crédito", false, "neto") +
     kpi("Entregado sin facturar", gs(kRem ? kRem.monto : 0),
       soloFacturas ? "órdenes entregadas · NO suman al monto" : "órdenes entregadas · incluidas en el monto") +
     kpi("Cant. Facturas", num(k.facturas), num(k.lineas) + " líneas") +
-    kpi("Promedio de Tickets", gs(k.ticket), "promedio por línea (AVG)") +
+    kpi("Promedio de Tickets", gs(k.ticket), "promedio neto por línea (AVG)") +
     kpi("Clientes Activos", num(k.activos), "de " + num(k.clientes) + " · desde " + k.corte.toLocaleDateString("es-PY"));
 }
 function kpi(lbl, val, sub, neg, extra) {
@@ -1792,7 +1796,7 @@ function renderDatos(datos) {
 
   // Ventas por mes (en orden cronológico)
   const meses = {};
-  datos.forEach(r => { if (r.esNC) return; meses[r.mes] = (meses[r.mes] || 0) + r.monto; });
+  datos.forEach(r => { meses[r.mes] = (meses[r.mes] || 0) + r.monto; });   // neto: las NC restan
   // Se completan los meses sin ventas con 0: si no, la lista saltea meses
   // (falta Junio, por ejemplo) y parece que estuviera desordenada.
   const conVenta = Object.keys(meses).map(Number);
@@ -1852,7 +1856,9 @@ function tituloGrafico(cual, titulo, sub) {
 // Evolución de ventas: por DÍA cuando se está mirando un mes puntual o un rango
 // corto, y por MES cuando se mira el año completo.
 function evolucion(datos) {
-  const ventas = datos.filter(r => !r.esNC);
+  // Neto: las notas de crédito restan en el mes (o el día) en que se emitieron,
+  // igual que en el resto del informe.
+  const ventas = datos;
   const porDia = !!filtros.mes || (filtros.desde && filtros.hasta &&
                  (new Date(filtros.hasta) - new Date(filtros.desde)) <= 62 * 86400000);
 
@@ -1899,7 +1905,7 @@ function evolucion(datos) {
     data: {
       labels: etiquetas,
       datasets: [
-        { type: porDia ? "line" : "bar", label: "Venta sin IVA", data: valores,
+        { type: porDia ? "line" : "bar", label: "Venta neta sin IVA", data: valores,
           backgroundColor: porDia ? "rgba(240,125,32,.15)" : "#f07d20",
           borderColor: "#f07d20", borderWidth: 2, fill: porDia, tension: .3,
           pointRadius: porDia ? 2 : 0, borderRadius: 3 },
