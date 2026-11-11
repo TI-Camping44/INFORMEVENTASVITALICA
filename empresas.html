@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Informes de Ventas — Camping 44 y Vitálica</title>
+<link rel="icon" href="VITALICA%20LOGO.png">
+<style>
+/* Una sola puerta de entrada a los dos informes de ventas. No calcula nada:
+   sólo lleva al informe de la empresa que se elija y se acuerda de cuál fue la
+   última, para que el que mira siempre la misma entre de un clic. */
+* { box-sizing: border-box; }
+:root {
+  --c44: #2b7a78; --c44-soft: #e8f3f2;
+  --vit: #f07d20; --vit-soft: #fdece0;
+  --texto: #2d3748; --muted: #718096; --borde: #e2e8f0; --fondo: #f4f6f8;
+}
+html, body { margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--fondo); color: var(--texto);
+       min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+       justify-content: center; padding: 24px 16px; }
+h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -.3px; }
+.sub { color: var(--muted); font-size: 13px; margin: 0 0 22px; text-align: center; }
+.tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+            gap: 16px; width: 100%; max-width: 720px; }
+a.emp { display: block; text-decoration: none; color: inherit; background: #fff;
+        border: 1px solid var(--borde); border-top: 4px solid var(--acc, var(--muted));
+        border-radius: 10px; padding: 18px 20px 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+        transition: transform .12s ease, box-shadow .12s ease; }
+a.emp:hover, a.emp:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.10); outline: none; }
+a.emp:focus-visible { border-color: var(--acc); }
+.nombre { font-size: 18px; font-weight: 800; letter-spacing: -.3px; color: var(--acc); }
+.que { font-size: 12px; color: var(--muted); line-height: 1.55; margin-top: 6px; }
+.entrar { margin-top: 12px; font-size: 12px; font-weight: 700; color: var(--acc); }
+.c44 { --acc: var(--c44); } .vit { --acc: var(--vit); }
+.ultima { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 20px;
+          padding: 2px 9px; margin-left: 8px; vertical-align: 3px;
+          background: var(--acc-soft, #edf1f5); color: var(--acc); }
+.c44 .ultima { --acc-soft: var(--c44-soft); } .vit .ultima { --acc-soft: var(--vit-soft); }
+.pie { color: var(--muted); font-size: 11px; margin-top: 22px; text-align: center; line-height: 1.6; }
+kbd { background: #fff; border: 1px solid var(--borde); border-bottom-width: 2px; border-radius: 4px;
+      padding: 0 5px; font-family: inherit; font-size: 10.5px; }
+@media (max-width: 600px) { body { justify-content: flex-start; padding-top: 40px; } }
+</style>
+</head>
+<body>
+
+<h1>Informes de Ventas</h1>
+<p class="sub">Elegí la empresa. Los dos informes leen Odoo y se actualizan solos.</p>
+
+<div class="tarjetas">
+  <a class="emp c44" id="t-c44" href="https://ti-camping44.github.io/INFORMEVENTASC44/">
+    <div class="nombre">Camping 44<span class="ultima hide" id="u-c44">última vez</span></div>
+    <div class="que">Resumen y canales, objetivos por vendedor y marca, ranking 37/10,
+      desglose de e-commerce y plan estratégico.</div>
+    <div class="entrar">Entrar →</div>
+  </a>
+
+  <a class="emp vit" id="t-vit" href="index.html">
+    <div class="nombre">Vitálica<span class="ultima hide" id="u-vit">última vez</span></div>
+    <div class="que">Resumen y canales, objetivos por canal, vendedor y familia, convenios con
+      gimnasios, stock y rotación, seguimiento de clientes.</div>
+    <div class="entrar">Entrar →</div>
+  </a>
+</div>
+
+<p class="pie">
+  Atajos: <kbd>1</kbd> Camping 44 · <kbd>2</kbd> Vitálica.<br>
+  Importes sin IVA y venta neta (ya restadas las notas de crédito) en los dos informes.
+</p>
+
+<script>
+// Se recuerda la última empresa elegida y se le pone la marquita, nada más: no
+// redirige solo, para que el que entra siempre vea las dos y pueda cambiar.
+(function () {
+  var CLAVE = "bi-empresa";
+  var marca = { c44: document.getElementById("u-c44"), vit: document.getElementById("u-vit") };
+  try {
+    var ult = localStorage.getItem(CLAVE);
+    if (ult && marca[ult]) marca[ult].classList.remove("hide");
+  } catch (e) { /* navegador sin almacenamiento: se muestran las dos igual */ }
+
+  function recordar(cual) { try { localStorage.setItem(CLAVE, cual); } catch (e) {} }
+  document.getElementById("t-c44").addEventListener("click", function () { recordar("c44"); });
+  document.getElementById("t-vit").addEventListener("click", function () { recordar("vit"); });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "1") document.getElementById("t-c44").click();
+    if (e.key === "2") document.getElementById("t-vit").click();
+  });
+})();
+</script>
+<style>.hide { display: none !important; }</style>
+</body>
+</html>

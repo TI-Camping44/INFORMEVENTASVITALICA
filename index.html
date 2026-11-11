@@ -33,6 +33,13 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-app)
              cursor: pointer; display: flex; align-items: center; gap: 7px; user-select: none; }
 .menu-item:hover { background: var(--side-hover); }
 .menu-item.active { background: var(--brand); }
+/* Salto al informe de la otra empresa, discreto arriba del menú. */
+.cambia-empresa { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap;
+                  font-size: 10.5px; margin: -8px 0 12px; }
+.cambia-empresa a { color: #a0aab8; text-decoration: none; border-bottom: 1px dotted #5a6472; }
+.cambia-empresa a:hover { color: #fff; border-bottom-color: #fff; }
+@media (max-width: 820px) { .cambia-empresa { display: none; } }
+
 .side-note { margin-top: auto; font-size: 10px; color: #a0aab8; line-height: 1.5; padding-top: 14px; }
 
 /* ---------- contenido ---------- */
@@ -305,6 +312,11 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
        onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)"
        onerror="if(!this.dataset.r){this.dataset.r=1;this.src='LOGO_VITALICA.png';}else{this.style.display='none';}">
   <h2 onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)">Vitálica · BI</h2>
+  <!-- Una sola puerta para los dos informes: desde acá se salta al de Camping 44. -->
+  <div class="cambia-empresa">
+    <a href="empresas.html" title="Elegir empresa">🏢 Empresa:</a>
+    <a href="https://ti-camping44.github.io/INFORMEVENTASC44/" title="Ir al informe de Camping 44">Camping 44 ⇄</a>
+  </div>
   <div id="menu-canales"></div>
   <div class="menu-item" data-page="__convenios" onclick="irA('__convenios', this)">🤝 Convenio Gimnasios</div>
   <div class="menu-item" data-page="__seguimiento" onclick="irA('__seguimiento', this)">📞 Seguimiento</div>
