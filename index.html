@@ -33,12 +33,22 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-app)
              cursor: pointer; display: flex; align-items: center; gap: 7px; user-select: none; }
 .menu-item:hover { background: var(--side-hover); }
 .menu-item.active { background: var(--brand); }
-/* Salto al informe de la otra empresa, discreto arriba del menú. */
-.cambia-empresa { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap;
-                  font-size: 10.5px; margin: -8px 0 12px; }
-.cambia-empresa a { color: #a0aab8; text-decoration: none; border-bottom: 1px dotted #5a6472; }
-.cambia-empresa a:hover { color: #fff; border-bottom-color: #fff; }
-@media (max-width: 820px) { .cambia-empresa { display: none; } }
+/* Selector de empresa: la que está abierta queda marcada, la otra se toca y lleva.
+   Es el mismo gesto que un interruptor, no un enlace suelto perdido en el menú. */
+.sw-empresa { display: flex; background: #262a31; border-radius: 8px; padding: 3px; gap: 3px;
+              margin: -4px 0 14px; }
+.sw-empresa a { flex: 1; text-align: center; font-size: 10.5px; font-weight: 700; letter-spacing: .2px;
+                padding: 5px 4px; border-radius: 6px; color: #98a2b0; text-decoration: none;
+                white-space: nowrap; }
+.sw-empresa a:hover { color: #fff; background: #3a4150; }
+/* La empresa abierta se marca con un punto naranja y un fondo apenas más claro,
+   no con el naranja lleno: ese color es el del menú, y dos bloques naranjas
+   pegados uno encima del otro competían y ensuciaban el panel. */
+.sw-empresa a.on { background: #454d5c; color: #fff; cursor: default; }
+.sw-empresa a.on::before { content: "●"; color: var(--brand); font-size: 7px; vertical-align: 2px;
+                           margin-right: 5px; }
+.sw-empresa a.on:hover { background: #454d5c; }
+@media (max-width: 820px) { .sw-empresa { max-width: 230px; margin: 0 8px 0 0; } }
 
 .side-note { margin-top: auto; font-size: 10px; color: #a0aab8; line-height: 1.5; padding-top: 14px; }
 
@@ -312,10 +322,10 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
        onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)"
        onerror="if(!this.dataset.r){this.dataset.r=1;this.src='LOGO_VITALICA.png';}else{this.style.display='none';}">
   <h2 onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)">Vitálica · BI</h2>
-  <!-- Una sola puerta para los dos informes: desde acá se salta al de Camping 44. -->
-  <div class="cambia-empresa">
-    <a href="empresas.html" title="Elegir empresa">🏢 Empresa:</a>
-    <a href="https://ti-camping44.github.io/INFORMEVENTASC44/" title="Ir al informe de Camping 44">Camping 44 ⇄</a>
+  <!-- Selector de empresa: se ve cuál está abierta y se cambia de un clic. -->
+  <div class="sw-empresa">
+    <a href="https://ti-camping44.github.io/INFORMEVENTASC44/" title="Ir al informe de Camping 44">Camping 44</a>
+    <a class="on" href="#" onclick="return false" title="Estás en el informe de Vitálica">Vitálica</a>
   </div>
   <div id="menu-canales"></div>
   <div class="menu-item" data-page="__convenios" onclick="irA('__convenios', this)">🤝 Convenio Gimnasios</div>
