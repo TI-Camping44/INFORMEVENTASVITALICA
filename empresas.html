@@ -4,7 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#f07d20">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
+<script>
+/* El tema se elige antes de pintar, y es el mismo que el de los informes: la
+   elección se guarda una sola vez para todo el tablero. */
+(function () {
+  var g = null;
+  try { g = localStorage.getItem("bi-tema"); } catch (e) {}
+  var sis = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro";
+  document.documentElement.setAttribute("data-tema", g === "oscuro" || g === "claro" ? g : sis);
+})();
+</script>
 <meta name="description" content="Entrada a los informes de ventas de Camping 44 y Vitálica.">
 <title>Informes de Ventas — Camping 44 y Vitálica</title>
 <link rel="icon" href="VITALICA%20LOGO.png">
@@ -17,6 +27,14 @@
   --c44: #2b7a78; --c44-soft: #e8f3f2;
   --vit: #f07d20; --vit-soft: #fdece0;
   --texto: #2d3748; --muted: #718096; --borde: #e2e8f0; --fondo: #f4f6f8;
+  --tarjeta: #ffffff; --sombra: rgba(0,0,0,.04); --sombra-alta: rgba(0,0,0,.10);
+}
+:root[data-tema="oscuro"] {
+  --c44: #4aa6a3; --c44-soft: #16302f;
+  --vit: #f49246; --vit-soft: #3a2614;
+  --texto: #e4e9f0; --muted: #96a1b0; --borde: #2c333d; --fondo: #14171c;
+  --tarjeta: #1b2027; --sombra: rgba(0,0,0,.3); --sombra-alta: rgba(0,0,0,.55);
+  color-scheme: dark;
 }
 html, body { margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--fondo); color: var(--texto);
@@ -26,12 +44,12 @@ h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -.3px; text-wrap: balance
 .sub { color: var(--muted); font-size: 13px; margin: 0 0 22px; text-align: center; }
 .tarjetas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
             gap: 16px; width: 100%; max-width: 720px; }
-a.emp { display: block; text-decoration: none; color: inherit; background: #fff;
+a.emp { display: block; text-decoration: none; color: inherit; background: var(--tarjeta);
         border: 1px solid var(--borde); border-top: 4px solid var(--acc, var(--muted));
-        border-radius: 10px; padding: 18px 20px 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+        border-radius: 10px; padding: 18px 20px 16px; box-shadow: 0 1px 2px var(--sombra);
         transition: transform .12s ease, box-shadow .12s ease; }
 a.emp { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-a.emp:hover, a.emp:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.10); }
+a.emp:hover, a.emp:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 20px var(--sombra-alta); }
 /* El foco se ve siempre: quien navega con teclado tiene que saber dónde está. */
 a.emp:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; border-color: var(--acc); }
 @media (prefers-reduced-motion: reduce) {
@@ -47,7 +65,12 @@ a.emp:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; border
           background: var(--acc-soft, #edf1f5); color: var(--acc); }
 .c44 .ultima { --acc-soft: var(--c44-soft); } .vit .ultima { --acc-soft: var(--vit-soft); }
 .pie { color: var(--muted); font-size: 11px; margin-top: 22px; text-align: center; line-height: 1.6; }
-kbd { background: #fff; border: 1px solid var(--borde); border-bottom-width: 2px; border-radius: 4px;
+.tema { background: var(--tarjeta); border: 1px solid var(--borde); color: var(--muted); border-radius: 999px;
+        padding: 5px 13px; font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+        touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.tema:hover { color: var(--texto); }
+.tema:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
+kbd { background: var(--tarjeta); border: 1px solid var(--borde); border-bottom-width: 2px; border-radius: 4px;
       padding: 0 5px; font-family: inherit; font-size: 10.5px; }
 @media (max-width: 600px) { body { justify-content: flex-start; padding-top: 40px; } }
 </style>
@@ -74,6 +97,7 @@ kbd { background: #fff; border: 1px solid var(--borde); border-bottom-width: 2px
 </div>
 
 <p class="pie">
+  <button type="button" id="btn-tema" class="tema" onclick="cambiarTema()"></button><br><br>
   Atajos: <kbd>1</kbd> Camping 44 · <kbd>2</kbd> Vitálica.<br>
   Importes sin IVA y venta neta (ya restadas las notas de crédito) en los dos informes.
 </p>
@@ -90,6 +114,22 @@ kbd { background: #fff; border: 1px solid var(--borde); border-bottom-width: 2px
   } catch (e) { /* navegador sin almacenamiento: se muestran las dos igual */ }
 
   function recordar(cual) { try { localStorage.setItem(CLAVE, cual); } catch (e) {} }
+
+  // Claro u oscuro: la misma elección que guardan los informes.
+  function pintarTema() {
+    var oscuro = document.documentElement.getAttribute("data-tema") === "oscuro";
+    var b = document.getElementById("btn-tema");
+    b.textContent = oscuro ? "☀️ Pasar a claro" : "🌙 Pasar a oscuro";
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", oscuro ? "#14171c" : "#f07d20");
+  }
+  window.cambiarTema = function () {
+    var nuevo = document.documentElement.getAttribute("data-tema") === "oscuro" ? "claro" : "oscuro";
+    document.documentElement.setAttribute("data-tema", nuevo);
+    try { localStorage.setItem("bi-tema", nuevo); } catch (e) {}
+    pintarTema();
+  };
+  pintarTema();
   document.getElementById("t-c44").addEventListener("click", function () { recordar("c44"); });
   document.getElementById("t-vit").addEventListener("click", function () { recordar("vit"); });
 
