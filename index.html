@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2f3640">
+<meta name="color-scheme" content="light">
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://docs.google.com">
 <title>Informe de Ventas — VITÁLICA</title>
 <link rel="icon" href="VITALICA%20LOGO.png">
 <link rel="apple-touch-icon" href="VITALICA%20LOGO.png">
@@ -25,12 +29,26 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-app)
 /* ---------- menú lateral ---------- */
 .sidebar { width: 210px; background: var(--side); color: #fff; padding: 14px 12px; flex-shrink: 0;
            display: flex; flex-direction: column; overflow-y: auto; }
-.sidebar-logo { width: 100%; max-width: 130px; margin: 0 auto 12px; display: block; background: #fff;
-                border-radius: 8px; padding: 8px; cursor: pointer; }
-.sidebar h2 { cursor: pointer; text-align: center; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
-              border-bottom: 2px solid #4a5262; padding-bottom: 8px; margin: 0 0 14px; }
-.menu-item { padding: 9px 11px; margin-bottom: 4px; border-radius: 6px; font-weight: 600; font-size: 11.5px;
-             cursor: pointer; display: flex; align-items: center; gap: 7px; user-select: none; }
+/* Botones que no parecen botones: el logo, el título y las pestañas del menú.
+   Son <button> de verdad para que entren con Tab y respondan a Enter. */
+.btn-plano { background: none; border: 0; padding: 0; margin: 0; color: inherit; font: inherit;
+             text-align: inherit; cursor: pointer; }
+.logo-btn { display: block; width: 100%; }
+.sidebar-logo { width: 100%; max-width: 130px; height: auto; margin: 0 auto 12px; display: block;
+                background: #fff; border-radius: 8px; padding: 8px; }
+.sidebar-nombre { display: block; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: 1px;
+                  text-transform: uppercase; border-bottom: 2px solid #4a5262; padding-bottom: 8px;
+                  margin: 0 0 14px; }
+/* Sólo para lectores de pantalla: el título real del documento y el salto al contenido. */
+.solo-lectores { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+                 clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.saltar { position: absolute; left: -9999px; top: 0; z-index: 1000; background: var(--brand); color: #fff;
+          padding: 10px 16px; border-radius: 0 0 8px 0; font-weight: 700; font-size: 12px; text-decoration: none; }
+.saltar:focus { left: 0; }
+.menu-item { width: 100%; background: none; border: 0; color: inherit; font-family: inherit;
+             padding: 9px 11px; margin-bottom: 4px; border-radius: 6px; font-weight: 600; font-size: 11.5px;
+             cursor: pointer; display: flex; align-items: center; gap: 7px; user-select: none;
+             text-align: left; }
 .menu-item:hover { background: var(--side-hover); }
 .menu-item.active { background: var(--brand); }
 /* Selector de empresa: la que está abierta queda marcada, la otra se toca y lleva.
@@ -48,16 +66,31 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-app)
 .sw-empresa a.on::before { content: "●"; color: var(--brand); font-size: 7px; vertical-align: 2px;
                            margin-right: 5px; }
 .sw-empresa a.on:hover { background: #454d5c; }
-@media (max-width: 820px) { .sw-empresa { max-width: 230px; margin: 0 8px 0 0; } }
+@media (max-width: 820px) {
+  .sw-empresa { flex: 1 0 100%; max-width: none; margin: 0 0 6px; }
+}
 
 .side-note { margin-top: auto; font-size: 10px; color: #a0aab8; line-height: 1.5; padding-top: 14px; }
+
+/* ---------- foco ----------
+   Un anillo propio, visible tanto sobre el panel oscuro como sobre el naranja.
+   Sólo con :focus-visible, para que no aparezca al hacer clic con el mouse. */
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+.sidebar :focus-visible, .menu-item:focus-visible, .sw-empresa a:focus-visible,
+.logo-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.btn:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 
 /* ---------- contenido ---------- */
 .main { flex: 1; overflow-y: auto; padding: 14px 18px 40px; }
 .topbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 12px; }
 .f-group { display: flex; flex-direction: column; gap: 3px; }
-.f-group label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; }
-select, input[type=date], input[type=text] { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+.f-group label, .f-group .f-rotulo { font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--muted); font-weight: 700; }
+/* El buscador de cliente es type=search (trae la crucecita para borrar), que
+   en escritorio arranca más ancho que los demás campos: se le fija el ancho
+   para que la fila de filtros quede pareja. */
+#f-cliente { width: 170px; }
+select, input[type=date], input[type=text], input[type=search] { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
        background: #fff; font-size: 12px; color: var(--text); min-width: 130px; font-family: inherit; }
 .btn { padding: 7px 13px; border: 0; border-radius: 6px; background: var(--brand); color: #fff; font-weight: 700;
        font-size: 11.5px; cursor: pointer; }
@@ -244,9 +277,11 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 /* Chips del filtro por antigüedad de la última compra. */
 /* Ventanita para registrar un contacto. */
 .dlg-fondo { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 900;
-             display: flex; align-items: center; justify-content: center; padding: 16px; }
+             display: flex; align-items: center; justify-content: center; padding: 16px;
+             overscroll-behavior: contain; }
 .dlg { background: #fff; border-radius: 10px; padding: 18px 20px; width: 100%; max-width: 420px;
-       box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+       box-shadow: 0 12px 40px rgba(0,0,0,.25); max-height: calc(100vh - 32px); overflow-y: auto;
+       overscroll-behavior: contain; }
 .dlg input { padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-family: inherit; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chips .chip { background: #fff; border: 1px solid var(--border); border-radius: 999px;
@@ -292,14 +327,21 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
 .hide { display: none !important; }
 @media (max-width: 820px) {
   body { flex-direction: column; height: auto; }
-  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 5px; padding: 8px; }
+  .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 5px; padding: 8px; }
   .sidebar h2, .side-note { display: none; }
   .sidebar-logo { width: 42px; margin: 0 6px 0 0; padding: 3px; }
-  .menu-item { padding: 7px 9px; font-size: 11px; margin-bottom: 0; }
+  /* En celular los accesos van como botoncitos uno al lado del otro: puestos
+     uno debajo del otro había que pasar trece antes de ver un solo número. */
+  /* La caja de los canales deja de contar como bloque para que sus accesos se
+     acomoden en la misma fila que los demás y no queden en una columna aparte. */
+  #menu-canales { display: contents; }
+  .menu-item { width: auto; padding: 7px 10px; font-size: 11px; margin-bottom: 0;
+               background: #262a31; border-radius: 999px; }
+  .menu-item.active { background: var(--brand); }
   .main { padding: 10px; }
   .topbar { gap: 6px; }
   .f-group { flex: 1 1 140px; }
-  select, input[type=date], input[type=text], .ms { min-width: 0; width: 100%; }
+  select, input[type=date], input[type=text], input[type=search], .ms { min-width: 0; width: 100%; }
   .ms-panel { min-width: 200px; }
   .kpi .k-val { font-size: 17px; }
   .card { overflow-x: auto; }          /* en celular la tabla se desliza dentro de la tarjeta */
@@ -307,60 +349,88 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   .card #t-seg { min-width: 1020px; }
   .tbl-scroll { overflow-x: auto; }
 }
+
+/* Detalles de interfaz que no cambian ningún número, sólo cómo se usa:
+   — en celular, que el toque responda ya y sin el recuadro gris de Android;
+   — títulos repartidos en líneas parejas y cifras de ancho fijo para que las
+     columnas no bailen;
+   — si la persona pidió menos movimiento en su sistema, el spinner deja de
+     girar (queda igual de visible, pero quieto). */
+button, .menu-item, .chip, tr.clickable, a.emp, .ms-btn {
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+h1, h2, h3, .card > h3, .k-lbl { text-wrap: balance; }
+.kpi .k-val, .k-sub, td.num, th.num { font-variant-numeric: tabular-nums; }
+#t-seg { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important; scroll-behavior: auto !important;
+  }
+  .spin { animation: none; border-top-color: var(--brand); }
+}
 </style>
 </head>
 <body>
 
 <div id="loader">
   <div class="spin"></div>
-  <div id="loader-text">Cargando ventas de Vitálica...</div>
-  <div id="loader-err" class="err hide"></div>
+  <div id="loader-text" aria-live="polite">Cargando ventas de Vitálica…</div>
+  <div id="loader-err" class="err hide" role="alert"></div>
 </div>
 
+<a class="saltar" href="#contenido">Ir al contenido</a>
+
 <aside class="sidebar">
-  <img src="VITALICA%20LOGO.png" alt="Vitálica" class="sidebar-logo"
-       onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)"
-       onerror="if(!this.dataset.r){this.dataset.r=1;this.src='LOGO_VITALICA.png';}else{this.style.display='none';}">
-  <h2 onclick="volverAlInicio()" title="Volver al resumen y quitar todos los filtros (Esc)">Vitálica · BI</h2>
+  <h1 class="solo-lectores">Informe de ventas de Vitálica</h1>
+  <!-- El logo y el título vuelven al inicio: son botones, no una imagen con onclick,
+       así se llega con Tab y responden a Enter. -->
+  <button type="button" class="btn-plano logo-btn" onclick="volverAlInicio()"
+          title="Volver al resumen y quitar todos los filtros (Esc)">
+    <img src="VITALICA%20LOGO.png" alt="" width="260" height="104" class="sidebar-logo"
+         onerror="if(!this.dataset.r){this.dataset.r=1;this.src='LOGO_VITALICA.png';}else{this.style.display='none';}">
+    <span class="sidebar-nombre">Vitálica · BI</span>
+  </button>
   <!-- Selector de empresa: se ve cuál está abierta y se cambia de un clic. -->
   <div class="sw-empresa">
     <a href="https://ti-camping44.github.io/INFORMEVENTASC44/" title="Ir al informe de Camping 44">Camping 44</a>
     <a class="on" href="#" onclick="return false" title="Estás en el informe de Vitálica">Vitálica</a>
   </div>
   <div id="menu-canales"></div>
-  <div class="menu-item" data-page="__convenios" onclick="irA('__convenios', this)">🤝 Convenio Gimnasios</div>
-  <div class="menu-item" data-page="__seguimiento" onclick="irA('__seguimiento', this)">📞 Seguimiento</div>
-  <div class="menu-item" data-page="__objetivos" onclick="irA('__objetivos', this)">🎯 Objetivos</div>
-  <div class="menu-item" data-page="__plan" onclick="irA('__plan', this)">🧭 Plan Estratégico</div>
-  <div class="menu-item" data-page="__stock" onclick="irA('__stock', this)">📦 Stock y Rotación</div>
-  <div class="menu-item" data-page="__audit" onclick="irA('__audit', this)">🔍 Auditoría de Producto</div>
-  <div class="menu-item" data-page="__nc" onclick="irA('__nc', this)">↩️ Notas de Crédito</div>
+  <button type="button" class="menu-item" data-page="__convenios" onclick="irA('__convenios', this)">🤝 Convenio Gimnasios</button>
+  <button type="button" class="menu-item" data-page="__seguimiento" onclick="irA('__seguimiento', this)">📞 Seguimiento</button>
+  <button type="button" class="menu-item" data-page="__objetivos" onclick="irA('__objetivos', this)">🎯 Objetivos</button>
+  <button type="button" class="menu-item" data-page="__plan" onclick="irA('__plan', this)">🧭 Plan Estratégico</button>
+  <button type="button" class="menu-item" data-page="__stock" onclick="irA('__stock', this)">📦 Stock y Rotación</button>
+  <button type="button" class="menu-item" data-page="__audit" onclick="irA('__audit', this)">🔍 Auditoría de Producto</button>
+  <button type="button" class="menu-item" data-page="__nc" onclick="irA('__nc', this)">↩️ Notas de Crédito</button>
   <div class="side-note">
     Importes <b>sin IVA</b>.<br>Sin Merchandising ni Muestrario.<br>
     <span id="side-actualizado"></span>
   </div>
 </aside>
 
-<main class="main">
+<main class="main" id="contenido" tabindex="-1">
   <div class="topbar">
-    <div class="f-group"><label>Año</label><select id="f-anio" onchange="aplicar()"></select></div>
-    <div class="f-group"><label>Mes</label><select id="f-mes" onchange="aplicar()"></select></div>
-    <div class="f-group"><label>Vendedor</label><div class="ms" id="ms-vendedor"></div></div>
-    <div class="f-group"><label>Canal</label><div class="ms" id="ms-canal"></div></div>
-    <div class="f-group"><label>Categoría</label><div class="ms" id="ms-categoria"></div></div>
-    <div class="f-group"><label>Producto</label><div class="ms" id="ms-producto"></div></div>
-    <div class="f-group"><label>Cliente</label><input type="text" id="f-cliente" placeholder="buscar cliente..." oninput="aplicar()"></div>
-    <div class="f-group"><label>Documento</label><select id="f-doc" onchange="aplicar()">
+    <div class="f-group"><label for="f-anio">Año</label><select id="f-anio" name="anio" onchange="aplicar()"></select></div>
+    <div class="f-group"><label for="f-mes">Mes</label><select id="f-mes" name="mes" onchange="aplicar()"></select></div>
+    <div class="f-group"><span class="f-rotulo" id="rot-vendedor">Vendedor</span><div class="ms" id="ms-vendedor" role="group" aria-labelledby="rot-vendedor"></div></div>
+    <div class="f-group"><span class="f-rotulo" id="rot-canal">Canal</span><div class="ms" id="ms-canal" role="group" aria-labelledby="rot-canal"></div></div>
+    <div class="f-group"><span class="f-rotulo" id="rot-categoria">Categoría</span><div class="ms" id="ms-categoria" role="group" aria-labelledby="rot-categoria"></div></div>
+    <div class="f-group"><span class="f-rotulo" id="rot-producto">Producto</span><div class="ms" id="ms-producto" role="group" aria-labelledby="rot-producto"></div></div>
+    <div class="f-group"><label for="f-cliente">Cliente</label><input type="search" id="f-cliente" name="cliente"
+      autocomplete="off" spellcheck="false" placeholder="buscar cliente…" oninput="aplicar()"></div>
+    <div class="f-group"><label for="f-doc">Documento</label><select id="f-doc" name="documento" onchange="aplicar()">
       <option value="factura" selected>Solo facturas</option>
       <option value="">Facturas + entregas sin facturar</option>
       <option value="remision">Solo entregas sin facturar</option>
     </select></div>
-    <div class="f-group"><label>Desde</label><input type="date" id="f-desde" onchange="aplicar()"></div>
-    <div class="f-group"><label>Hasta</label><input type="date" id="f-hasta" onchange="aplicar()"></div>
-    <div class="f-group"><label>&nbsp;</label><button class="btn btn-sec" onclick="limpiarFiltros()">Limpiar</button></div>
-    <div class="f-group"><label>&nbsp;</label><button class="btn" onclick="iniciar()">🔄 Actualizar</button></div>
-    <div class="f-group"><label>&nbsp;</label><button class="btn btn-sec" onclick="exportarExcel()">⬇ Excel</button></div>
-    <div class="f-group"><label>&nbsp;</label><button class="btn btn-sec" onclick="abrirCompartir()"
+    <div class="f-group"><label for="f-desde">Desde</label><input type="date" id="f-desde" name="desde" onchange="aplicar()"></div>
+    <div class="f-group"><label for="f-hasta">Hasta</label><input type="date" id="f-hasta" name="hasta" onchange="aplicar()"></div>
+    <div class="f-group"><span class="f-rotulo" aria-hidden="true">&nbsp;</span><button class="btn btn-sec" onclick="limpiarFiltros()">Limpiar</button></div>
+    <div class="f-group"><span class="f-rotulo" aria-hidden="true">&nbsp;</span><button class="btn" onclick="iniciar()">🔄 Actualizar</button></div>
+    <div class="f-group"><span class="f-rotulo" aria-hidden="true">&nbsp;</span><button class="btn btn-sec" onclick="exportarExcel()">⬇ Excel</button></div>
+    <div class="f-group"><span class="f-rotulo" aria-hidden="true">&nbsp;</span><button class="btn btn-sec" onclick="abrirCompartir()"
       title="Copiar un enlace que abre el informe tal cual lo estás viendo">🔗 Compartir</button></div>
   </div>
 
@@ -422,15 +492,16 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   <div id="vista-seguimiento" class="hide"></div>
 
   <div id="dlg-compartir" class="dlg-fondo hide" onclick="if(event.target===this)cerrarCompartir()">
-    <div class="dlg" style="max-width:560px">
-      <h3 style="margin:0 0 4px">Compartir este informe</h3>
+    <div class="dlg" style="max-width:560px" role="dialog" aria-modal="true" aria-labelledby="cmp-titulo">
+      <h3 style="margin:0 0 4px" id="cmp-titulo">Compartir este informe</h3>
       <div id="cmp-resumen" style="font-size:11.5px;color:var(--muted);margin-bottom:10px"></div>
-      <input type="text" id="cmp-url" readonly onclick="this.select()" style="width:100%;font-size:11px">
+      <input type="text" id="cmp-url" readonly onclick="this.select()" aria-label="Enlace del informe"
+             autocomplete="off" spellcheck="false" style="width:100%;font-size:11px">
       <label style="display:flex;gap:7px;align-items:flex-start;margin:11px 0;font-size:11.5px;cursor:pointer">
         <input type="checkbox" id="cmp-fijo" onchange="refrescarLinkCompartir()" style="margin-top:2px">
         <span><b>Dejar los filtros fijos.</b> Quien abra el enlace ve sólo este recorte y no puede
         cambiarlo. Sirve para mandarle a un vendedor su propio panel.</span></label>
-      <div id="cmp-aviso" style="font-size:11.5px;font-weight:700;color:var(--green);min-height:16px"></div>
+      <div id="cmp-aviso" aria-live="polite" style="font-size:11.5px;font-weight:700;color:var(--green);min-height:16px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
         <button class="btn btn-sec" onclick="cerrarCompartir()">Cerrar</button>
         <button class="btn" onclick="copiarLinkCompartir()">📋 Copiar enlace</button>
@@ -439,15 +510,16 @@ tbody tr.clickable:hover td:nth-child(2) { text-decoration: underline; }
   </div>
 
   <div id="dlg-contacto" class="dlg-fondo hide" onclick="if(event.target===this)cerrarContacto()">
-    <div class="dlg">
-      <h3 style="margin:0 0 4px">Registrar contacto</h3>
+    <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-titulo">
+      <h3 style="margin:0 0 4px" id="dlg-titulo">Registrar contacto</h3>
       <div id="dlg-cliente" style="font-weight:700;color:var(--brand);margin-bottom:10px"></div>
-      <label style="font-size:11px;color:var(--muted);font-weight:700">FECHA DEL CONTACTO</label>
-      <input type="date" id="dlg-fecha" style="width:100%;margin:3px 0 10px">
-      <label style="font-size:11px;color:var(--muted);font-weight:700">NOTA (opcional)</label>
-      <input type="text" id="dlg-nota" placeholder="ej: pidió que le escriba en octubre" style="width:100%;margin:3px 0 12px">
-      <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:6px">¿CÓMO SALIÓ?</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <label for="dlg-fecha" style="font-size:11px;color:var(--muted);font-weight:700">FECHA DEL CONTACTO</label>
+      <input type="date" id="dlg-fecha" name="fecha-contacto" style="width:100%;margin:3px 0 10px">
+      <label for="dlg-nota" style="font-size:11px;color:var(--muted);font-weight:700">NOTA (opcional)</label>
+      <input type="text" id="dlg-nota" name="nota-contacto" autocomplete="off"
+             placeholder="ej: pidió que le escriba en octubre" style="width:100%;margin:3px 0 12px">
+      <div id="dlg-salio" style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:6px">¿CÓMO SALIÓ?</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" role="group" aria-labelledby="dlg-salio">
         <button class="btn" onclick="registrarContacto('Compró')">🛒 Compró</button>
         <button class="btn btn-sec" onclick="registrarContacto('No compró')">🙁 No compró</button>
         <button class="btn btn-sec" onclick="registrarContacto('No contesta')">📵 No contesta</button>
@@ -668,6 +740,10 @@ let METAS = null;        // objetivos leídos de CONFIG
 let PLAN = null;         // plan estratégico leído de la hoja PLAN
 let PAGINA = "__resumen";
 let charts = {};
+/* Si la persona pidió menos movimiento en su sistema, los gráficos aparecen
+   dibujados en vez de animarse. Se fija una sola vez, al arrancar. */
+const MENOS_MOVIMIENTO = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (MENOS_MOVIMIENTO && typeof Chart !== "undefined") Chart.defaults.animation = false;
 // El mes con el que abre el informe (lo llena construirFiltros: el mes en curso).
 let MES_POR_DEFECTO = "";
 let filtros = { doc: "factura", anio: "", mes: "", vendedores: [], canales: [], categorias: [], productos: [], clientes: [], cliente: "", desde: "", hasta: "" };
@@ -737,7 +813,7 @@ function soloNombre(v) { return String(v || "").split(" - ")[0].trim(); }
 async function iniciar() {
   document.getElementById("loader").classList.remove("hide");
   document.getElementById("loader-err").classList.add("hide");
-  document.getElementById("loader-text").textContent = "Trayendo ventas de Google Sheets...";
+  document.getElementById("loader-text").textContent = "Trayendo ventas de Google Sheets…";
 
   if (String(SHEET_PUB_BASE).startsWith("PEGAR")) {
     return fallo("Falta configurar la planilla.<br><br>Editá <b>index.html</b> y completá " +
@@ -748,7 +824,7 @@ async function iniciar() {
   const to = setTimeout(() => ctrl.abort(), 90000);
   try {
     if (!SHEET_GID_CONFIG || !SHEET_GID_DATA) {
-      document.getElementById("loader-text").textContent = "Buscando las pestañas de la planilla...";
+      document.getElementById("loader-text").textContent = "Buscando las pestañas de la planilla…";
       await descubrirGids(ctrl.signal);
     }
     const cb = "&single=true&output=csv&cb=" + Date.now();
@@ -1169,8 +1245,12 @@ function opciones(campo) { return [...new Set(FILAS.map(r => r[campo]))].filter(
 function multiselect(idCont, campo, etiqueta) {
   const cont = document.getElementById(idCont);
   const vals = opciones(campo);
-  cont.innerHTML = '<div class="ms-btn" data-todos="-- Todos --">-- Todos --</div><div class="ms-panel">' +
-    '<input class="ms-buscar" type="text" placeholder="buscar ' + esc(etiqueta.toLowerCase()) + '..." ' +
+  cont.innerHTML = '<button type="button" class="ms-btn" data-todos="-- Todos --" aria-haspopup="true" ' +
+      'aria-expanded="false" aria-label="' + esc(etiqueta) + ': -- Todos --">-- Todos --</button>' +
+    '<div class="ms-panel">' +
+    '<input class="ms-buscar" type="text" autocomplete="off" spellcheck="false" ' +
+      'aria-label="Buscar ' + esc(etiqueta.toLowerCase()) + '" ' +
+      'placeholder="buscar ' + esc(etiqueta.toLowerCase()) + '…" ' +
       'oninput="msBuscar(\'' + idCont + '\', this.value)" onclick="event.stopPropagation()">' +
     '<label class="ms-all"><input type="checkbox" checked onchange="msTodos(\'' + idCont + '\', this)"> ' +
       'Todos <span class="ms-cab"></span></label>' +
@@ -1178,9 +1258,16 @@ function multiselect(idCont, campo, etiqueta) {
       '" checked onchange="msCambio(\'' + idCont + '\')"> <span class="ms-txt">' + esc(v) +
       '</span><span class="ms-monto"></span></label>').join("") +
     '<div class="ms-vacio">Nada para elegir con los filtros de ahora.</div>' +
-    '<div class="ms-mas" onclick="msVacios(\'' + idCont + '\', event)"></div>' +
+    '<button type="button" class="ms-mas" onclick="msVacios(\'' + idCont + '\', event)"></button>' +
     '</div>';
-  cont.querySelector(".ms-btn").onclick = e => { e.stopPropagation(); cont.classList.toggle("open"); };
+  const btn = cont.querySelector(".ms-btn");
+  btn.onclick = e => {
+    e.stopPropagation();
+    cont.classList.toggle("open");
+    btn.setAttribute("aria-expanded", cont.classList.contains("open") ? "true" : "false");
+    // Al abrir con teclado, el foco va al buscador: es lo primero que se usa.
+    if (cont.classList.contains("open")) { const q = cont.querySelector(".ms-buscar"); if (q) q.focus(); }
+  };
   cont.dataset.campo = campo; cont.dataset.etiqueta = etiqueta;
 }
 function msTodos(id, chk) {
@@ -1194,6 +1281,10 @@ function msTodos(id, chk) {
   msCambio(id);
 }
 /** Deja el botón del filtro diciendo qué se eligió, no sólo cuántos. */
+function cerrarMultiselect(cont) {
+  cont.classList.remove("open");
+  const b = cont.querySelector(".ms-btn"); if (b) b.setAttribute("aria-expanded", "false");
+}
 function etiquetaBoton(cont, sel, total) {
   const btn = cont.querySelector(".ms-btn");
   if (!sel.length || sel.length === total) { btn.textContent = "-- Todos --"; btn.title = "Todos"; return; }
@@ -1284,7 +1375,7 @@ function refrescarOpciones() {
     }
   });
 }
-document.addEventListener("click", () => document.querySelectorAll(".ms.open").forEach(m => m.classList.remove("open")));
+document.addEventListener("click", () => document.querySelectorAll(".ms.open").forEach(cerrarMultiselect));
 
 function construirFiltros() {
   const anios = [...new Set(FILAS.map(r => r.anio))].sort((a, b) => b - a);
@@ -1319,7 +1410,8 @@ function construirMenu() {
   const items = [{ id: "__resumen", txt: "📊 Resumen Principal" }]
     .concat(canalesConVenta.concat(otros).map(c => ({ id: c, txt: (ICONO_CANAL[c] || "•") + " " + c })));
   document.getElementById("menu-canales").innerHTML = items.map(it =>
-    '<div class="menu-item' + (it.id === PAGINA ? " active" : "") + '" data-page="' + esc(it.id) + '" onclick="irA(\'' + esc(it.id).replace(/'/g, "\\'") + '\', this)">' + esc(it.txt) + '</div>').join("");
+    '<button type="button" class="menu-item' + (it.id === PAGINA ? " active" : "") + '" data-page="' + esc(it.id) +
+    '" onclick="irA(\'' + esc(it.id).replace(/'/g, "\\'") + '\', this)">' + esc(it.txt) + '</button>').join("");
 }
 function irA(pagina, el) {
   if (FILTROS_FIJOS) return;
@@ -1353,12 +1445,25 @@ function volverAlInicio() {
   limpiarFiltros();
 }
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") {
-    // Si hay un desplegable abierto, Escape lo cierra; si no, limpia los filtros.
-    const abierto = document.querySelector(".ms.open");
-    if (abierto) { abierto.classList.remove("open"); return; }
-    volverAlInicio();
-  }
+  if (e.key !== "Escape") return;
+  // Escape cierra lo de más adentro primero: un diálogo abierto, después un
+  // desplegable, y recién si no hay nada abierto limpia los filtros. Antes, con
+  // un diálogo abierto, Escape borraba los filtros de atrás.
+  const dlg = document.querySelector(".dlg-fondo:not(.hide)");
+  if (dlg) { if (dlg.id === "dlg-compartir") cerrarCompartir(); else cerrarContacto(); return; }
+  const abierto = document.querySelector(".ms.open");
+  if (abierto) { cerrarMultiselect(abierto); return; }
+  volverAlInicio();
+});
+
+/* Las filas que filtran al tocarlas también tienen que andar con el teclado:
+   entran con Tab y se activan con Enter o Espacio, como un botón. */
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const fila = e.target.closest && e.target.closest("tr.clickable");
+  if (!fila) return;
+  e.preventDefault();
+  fila.click();
 });
 
 function limpiarFiltros() {
@@ -1395,6 +1500,19 @@ const PARAMS_URL = [
 const PARAMS_MULTI = [["v", "vendedores"], ["c", "canales"], ["g", "categorias"],
                       ["pr", "productos"], ["cl", "clientes"]];
 let FILTROS_FIJOS = false;
+
+/* La dirección del navegador acompaña a lo que se está mirando: así el botón
+   de atrás, recargar y guardar en favoritos devuelven la misma vista, y copiar
+   la barra de direcciones ya comparte el informe filtrado. No toca el historial
+   (replaceState) para que "atrás" salga del informe y no vaya filtro por
+   filtro, y no se mete cuando la vista llegó fija por un enlace compartido. */
+function reflejarUrl(nombrePagina) {
+  if (FILTROS_FIJOS || !window.history || !history.replaceState) return;
+  try {
+    history.replaceState(null, "", urlDelInforme(false));
+    document.title = nombrePagina + " · Ventas Vitálica";
+  } catch (e) { /* navegador sin historial: la vista anda igual */ }
+}
 
 function urlDelInforme(fijar) {
   const u = new URL(window.location.href);
@@ -1447,11 +1565,40 @@ function fijarFiltros() {
     'están fijos. <a href="' + window.location.pathname + '">Abrir el informe completo</a>.</div>');
 }
 
+/* Los dos diálogos se abren y se cierran por acá para que el teclado no se
+   escape atrás: al abrir, el foco entra al diálogo; mientras está abierto, Tab
+   da la vuelta adentro; al cerrar, el foco vuelve al botón que lo abrió. */
+let focoPrevio = null;
+const FOCUSABLES = 'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
+
+function abrirDlg(id) {
+  focoPrevio = document.activeElement;
+  const fondo = document.getElementById(id);
+  fondo.classList.remove("hide");
+  const foco = fondo.querySelector(FOCUSABLES);
+  if (foco) foco.focus();
+}
+function cerrarDlg(id) {
+  document.getElementById(id).classList.add("hide");
+  if (focoPrevio && focoPrevio.focus) focoPrevio.focus();
+  focoPrevio = null;
+}
+document.addEventListener("keydown", e => {
+  if (e.key !== "Tab") return;
+  const fondo = document.querySelector(".dlg-fondo:not(.hide)");
+  if (!fondo) return;
+  const campos = [].slice.call(fondo.querySelectorAll(FOCUSABLES)).filter(el => el.offsetParent !== null);
+  if (!campos.length) return;
+  const primero = campos[0], ultimo = campos[campos.length - 1];
+  if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+  else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+});
+
 function abrirCompartir() {
-  const dlg = document.getElementById("dlg-compartir");
   document.getElementById("cmp-fijo").checked = false;
+  document.getElementById("cmp-aviso").textContent = "";
   refrescarLinkCompartir();
-  dlg.classList.remove("hide");
+  abrirDlg("dlg-compartir");
 }
 function refrescarLinkCompartir() {
   const fijar = document.getElementById("cmp-fijo").checked;
@@ -1472,7 +1619,7 @@ function copiarLinkCompartir() {
   if (navigator.clipboard) navigator.clipboard.writeText(inp.value).then(listo, () => document.execCommand("copy") && listo());
   else { document.execCommand("copy"); listo(); }
 }
-function cerrarCompartir() { document.getElementById("dlg-compartir").classList.add("hide"); }
+function cerrarCompartir() { cerrarDlg("dlg-compartir"); }
 
 // ------------------------------------------------------------- filtrado
 function leerFiltrosDeUI() {
@@ -1563,6 +1710,7 @@ function aplicarInterno() {
     // lo que se cuenta ahí son las facturas con cupón.
     (esConv ? "" : " · " + num(datos.length) + " líneas de factura");
 
+  reflejarUrl(nombrePagina);
   renderChips();
   refrescarOpciones();
   if (esSeg) return renderSeguimiento();
@@ -1711,7 +1859,7 @@ function tablaRanking(idTabla, filas, encabezado, opts) {
 
   top.forEach((f, i) => {
     const sel = campo && (filtros[{ vendedor: "vendedores", canal: "canales", categoria: "categorias", producto: "productos", cliente: "clientes" }[campo]] || []).includes(f.clave);
-    const click = campo ? " class='clickable" + (sel ? " total-row" : "") + "' onclick='filtrarPor(\"" + campo + "\", " +
+    const click = campo ? " class='clickable" + (sel ? " total-row" : "") + "' tabindex='0' role='button' onclick='filtrarPor(\"" + campo + "\", " +
       JSON.stringify(f.clave).replace(/'/g, "&#39;").replace(/"/g, "&quot;") + ")' title='Filtrar por " + esc(f.clave) + "'" : "";
     h += "<tr" + click + "><td class='idx'>" + (i + 1) + "</td>" +
       "<td class='col-nombre' title='" + esc(f.clave) +
@@ -1830,8 +1978,8 @@ function renderDatos(datos) {
   const maxMes = Math.max(...filasMes.map(f => f.monto), 1);
   document.getElementById("t-meses").innerHTML = filasMes.length
     ? "<thead><tr><th class='col-nombre'>Mes</th><th class='num w-monto'>Sin IVA PYG</th><th class='num w-pct'>%</th></tr></thead><tbody>" +
-      filasMes.map(f => "<tr class='clickable" + (String(filtros.mes) === String(f.mes) ? " total-row" : "") +
-        "' onclick=\"filtrarMes('" + f.mes + "')\" title='Filtrar por " + f.clave + "'><td class='col-nombre'>" + f.clave +
+      filasMes.map(f => "<tr tabindex='0' role='button' class='clickable" + (String(filtros.mes) === String(f.mes) ? " total-row" : "") + "'" +
+        " onclick=\"filtrarMes('" + f.mes + "')\" title='Filtrar por " + f.clave + "'><td class='col-nombre'>" + f.clave +
         "<div class='bar-wrap'><div class='bar' style='width:" +
         (f.monto / maxMes * 100) + "%'></div></div></td><td class='num'>" + num(f.monto) + "</td><td class='num'>" +
         pct(f.monto, totalMes).toFixed(1) + "%</td></tr>").join("") +
@@ -2202,7 +2350,7 @@ function renderSeguimiento() {
           r.lbl + ' <b>' + n + '</b></span>';
       }).join("") +
     '</div>' +
-    '<div id="aviso-seg" style="font-size:11.5px;font-weight:700;min-height:16px;margin-bottom:4px"></div>' +
+    '<div id="aviso-seg" role="status" aria-live="polite" style="font-size:11.5px;font-weight:700;min-height:16px;margin-bottom:4px"></div>' +
     '<div class="card"><h3>Clientes a seguir <small>' + visible.length + ' de ' + lista.length +
       '<button class="btn btn-sec" style="padding:3px 8px;font-size:10.5px;margin-left:8px" onclick="exportarSeguimiento()">⬇ Excel</button></small></h3>' +
       '<div class="tbl-scroll" style="max-height:560px"><table id="t-seg"></table></div></div>' +
@@ -2236,7 +2384,7 @@ function renderSeguimiento() {
       const atrasado = x.atraso > 0 && x.estado !== "contactado";
       const cuando = x.atraso > 0 ? "vencido hace " + x.atraso + " d"
         : x.atraso === 0 ? "es hoy" : "en " + (-x.atraso) + " días";
-      h += "<tr class='clickable' onclick=\"filtrarPorCliente('" + esc(x.cliente).replace(/'/g, "\\'") + "')\" " +
+      h += "<tr class='clickable' tabindex='0' role='button' onclick=\"filtrarPorCliente('" + esc(x.cliente).replace(/'/g, "\\'") + "')\" " +
         "title='Ver todo lo de este cliente'>" +
         "<td>" + semaforo + "</td>" +
         "<td class='col-nombre' title='" + esc(x.cliente + (ficha ? " — " + ficha : "")) + "'>" +
@@ -2640,9 +2788,9 @@ function abrirContacto(cliente) {
   document.getElementById("dlg-cliente").textContent = cliente;
   document.getElementById("dlg-nota").value = "";
   document.getElementById("dlg-fecha").value = ymd(new Date());
-  document.getElementById("dlg-contacto").classList.remove("hide");
+  abrirDlg("dlg-contacto");
 }
-function cerrarContacto() { document.getElementById("dlg-contacto").classList.add("hide"); clienteEnRegistro = null; }
+function cerrarContacto() { cerrarDlg("dlg-contacto"); clienteEnRegistro = null; }
 
 async function registrarContacto(resultado) {
   if (!clienteEnRegistro) return;
@@ -3036,7 +3184,8 @@ function renderStock() {
     '</small></h3><div class="filtros-stock">' +
     GRUPOS.map(g => '<button class="btn btn-sec' + (filtroStock === g.k ? " on" : "") +
       '" onclick="verStock(\'' + g.k + '\')">' + g.lab + " (" + todas.filter(g.f).length + ")</button>").join("") +
-    '<input type="text" id="q-stock" placeholder="buscar producto, código o familia..." ' +
+    '<input type="search" id="q-stock" name="buscar-stock" autocomplete="off" spellcheck="false" '
+    + 'aria-label="Buscar producto, código o familia" placeholder="buscar producto, código o familia…" ' +
     'value="' + esc(buscaStock) + '" oninput="buscarStock(this.value)" style="min-width:230px">' +
     '</div>';
 
@@ -3189,7 +3338,7 @@ function renderAuditoria() {
 
   h += '<div class="card" style="padding:10px 12px"><h3 style="margin:0 0 7px">Producto a auditar ' +
     '<small>' + productos.length + ' con movimiento en ' + esc(anio) + '</small></h3>' +
-    '<select id="sel-audit" style="width:100%;max-width:760px" onchange="elegirAudit(this.value)">' +
+    '<select id="sel-audit" aria-label="Elegir relevamiento" style="width:100%;max-width:760px" onchange="elegirAudit(this.value)">' +
     productos.map(pr => '<option value="' + esc(pr) + '"' + (pr === auditProd ? ' selected' : '') + '>' +
       esc(pr) + ' — ' + num(porProd[pr]) + ' u</option>').join("") + '</select></div>';
 
