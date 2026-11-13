@@ -41,6 +41,7 @@ html, body { width: 100%; max-width: 100vw; overflow-x: hidden; margin: 0; paddi
   --err-bg: #fde8e8; --err-bd: #f8b4b4; --err-tx: #9b1c1c;
   --mal-bd: #f0c2c2; --nd-bd: #dde3ea;
   --loader-bg: rgba(255,255,255,.96); --sombra: rgba(0,0,0,.12);
+  --th-tx: #2b1400;                /* letra de los encabezados, sobre el naranja */
   --rejilla: #eef1f5;              /* líneas de fondo de los gráficos */
   --prom: #8a94a6;                 /* la raya del promedio en la evolución */
 }
@@ -292,7 +293,9 @@ select, input[type=date], input[type=text], input[type=search] { padding: 6px 8p
 .card h3 { margin: 0 0 9px; font-size: 13px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
 .card h3 small { font-weight: 500; color: var(--muted); font-size: 10.5px; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-th { background: var(--brand); color: #fff; font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px;
+/* La letra de los encabezados va en marrón oscuro y no en blanco: sobre el
+   naranja de la marca el blanco se lee flojo (2,7 a 1) y así queda en 6,4. */
+th { background: var(--brand); color: var(--th-tx); font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px;
      padding: 6px 8px; text-align: left; font-weight: 700; }
 td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
 /* El nombre ocupa lo que sobra y se recorta con puntos suspensivos (el nombre
@@ -317,7 +320,10 @@ tbody tr:nth-child(even) { background: var(--row-alt); }
 tbody tr.total-row { background: var(--brand-soft); font-weight: 800; }
 tbody tr.total-row td { border-top: 2px solid var(--brand); }
 .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.idx { color: var(--muted); width: 26px; }
+/* El gris del número de orden es para las filas; en el encabezado va sobre
+   naranja y ahí tiene que seguir al resto de los títulos. */
+td.idx { color: var(--muted); }
+.idx { width: 26px; }
 .bar-wrap { background: var(--gray-chip); border-radius: 3px; height: 6px; overflow: hidden; margin-top: 3px; }
 .bar { height: 100%; background: var(--brand); }
 .tbl-scroll { max-height: 420px; overflow-y: auto; }
@@ -347,7 +353,7 @@ tbody tr.total-row td { border-top: 2px solid var(--brand); }
 /* columnas ordenables y filas clicables */
 th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 th.sortable:hover { background: var(--brand-dark); }
-th .arrow { opacity: .45; margin-left: 3px; font-size: 9px; }
+th .arrow { opacity: .6; margin-left: 3px; font-size: 9px; }
 th.sorted .arrow { opacity: 1; }
 tbody tr.clickable { cursor: pointer; }
 tbody tr.clickable:hover { background: var(--brand-soft); }
