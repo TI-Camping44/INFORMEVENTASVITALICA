@@ -291,6 +291,69 @@ function contieneAlguna_(txt, lista) {
 }
 
 
+/* ---------------------------------------------------------------- ¿vino de la web?
+   La factura no dice si la venta la hizo el cliente desde la tienda: eso vive en
+   el PEDIDO (sale.order.website_id). Estas tres funciones traen ese dato y lo
+   dejan en DATA como una columna más, para no tener que entrar a Odoo cada vez
+   que alguien pregunta de dónde salió una venta.
+   Si la instalación no tiene la tienda web instalada, el campo no existe: se
+   detecta una sola vez y la columna queda vacía, sin romper la carga.          */
+
+var HAY_WEBSITE = null;   // null = todavía no se miró
+
+/** Campos del pedido que se piden a Odoo, con el sitio web sólo si existe. */
+function camposOrden_(uid, pwd) {
+  var base = ["name", "partner_id", "partner_shipping_id", "user_id", "team_id", "date_order", "state", "invoice_status"];
+  if (HAY_WEBSITE === null) {
+    try {
+      var f = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order", "fields_get", [], { attributes: ["string"] });
+      HAY_WEBSITE = !!(f && f["website_id"]);
+    } catch (e) { HAY_WEBSITE = false; }
+  }
+  if (HAY_WEBSITE) base.push("website_id");
+  return base;
+}
+
+/** Mapa «nombre del pedido ➜ true/false si vino de la tienda web». */
+function ordenesWeb_(uid, pwd, moves) {
+  var mapa = {};
+  var nombres = [];
+  (moves || []).forEach(function (m) {
+    String(m.invoice_origin || "").split(",").forEach(function (n) {
+      n = n.trim();
+      if (n && nombres.indexOf(n) < 0) nombres.push(n);
+    });
+  });
+  if (!nombres.length) return mapa;
+  var campos = camposOrden_(uid, pwd);
+  if (!HAY_WEBSITE) return mapa;          // sin tienda web no hay nada que marcar
+  // De a tandas: un "in" con miles de nombres hace fallar la llamada.
+  for (var i = 0; i < nombres.length; i += 400) {
+    var tanda = nombres.slice(i, i + 400);
+    try {
+      var ords = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order", "search_read",
+        [[["name", "in", tanda]]], { fields: ["name", "website_id"], limit: 1000 }) || [];
+      ords.forEach(function (o) { mapa[o.name] = !!o.website_id; });
+    } catch (e) { /* una tanda que falla no tiene que tirar abajo la carga entera */ }
+  }
+  return mapa;
+}
+
+/** "Sí" / "No" / "" para la columna, a partir del documento de origen de la factura. */
+function marcaWeb_(mapa, origen) {
+  if (!HAY_WEBSITE) return "";
+  var nombres = String(origen || "").split(",").map(function (n) { return n.trim(); }).filter(String);
+  if (!nombres.length) return "";
+  var visto = false;
+  for (var i = 0; i < nombres.length; i++) {
+    if (!(nombres[i] in mapa)) continue;
+    visto = true;
+    if (mapa[nombres[i]]) return "Sí";    // con que un pedido sea de la web, alcanza
+  }
+  return visto ? "No" : "";
+}
+
+
 function CALCULAR_HABILES(inicio, fin, feriados) {
   function toDateStr(v) { if (!v || v === "") return null; let d; if (v instanceof Date) d = v; else { let p = v.toString().trim().split("/"); if(p.length === 3) d = new Date(p[2], p[1] - 1, p[0]); else return null; } return Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd"); }
   function parseDateObj(v) { if (!v || v === "") return null; if (v instanceof Date) return v; let p = v.toString().trim().split("/"); if(p.length === 3) return new Date(p[2], p[1] - 1, p[0]); return new Date(); }
@@ -445,7 +508,10 @@ function actualizarDatosOdoo_(silencioso) {
     // partner_id de la FACTURA: el del apunte contable puede quedar viejo si
     // después se le cambió el cliente a la factura (pasó con 001-002-0000221,
     // que se corrigió a Bambú Group y el apunte seguía diciendo Garage Cross).
-    var _moveFields = ["invoice_user_id", "team_id", "move_type", "name", "invoice_date", "invoice_date_due", "state", "reversed_entry_id", "partner_id"];
+    // invoice_origin es el presupuesto/pedido del que salió la factura (S00123):
+    // con eso se sabe si la venta entró por la tienda web o se cargó a mano, que
+    // mirando sólo la factura no se distingue.
+    var _moveFields = ["invoice_user_id", "team_id", "move_type", "name", "invoice_date", "invoice_date_due", "state", "reversed_entry_id", "partner_id", "invoice_origin"];
     if (CAMPO_ETIQUETA) _moveFields.push(CAMPO_ETIQUETA);
     // 🏪 La SUCURSAL no está en el cliente de la factura, está en la dirección de
     // entrega (Garage Cross factura a la casa matriz y entrega en cada GTC).
@@ -453,6 +519,13 @@ function actualizarDatosOdoo_(silencioso) {
     try { HAY_ENVIO = !!(_flds && _flds["partner_shipping_id"]); } catch (e) { HAY_ENVIO = false; }
     if (HAY_ENVIO) _moveFields.push("partner_shipping_id");
     var moves = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.move", "read", [[...new Set(moveIds)]], { fields: _moveFields }); var moveMap = {}; moves.forEach(m => moveMap[m.id] = m);
+
+    // 🌐 ¿La venta entró por la tienda web? Odoo lo guarda en el PEDIDO, no en la
+    //    factura: si el pedido tiene sitio web (website_id), lo hizo el cliente
+    //    solo desde la tienda. Se arma un mapa pedido ➜ web para marcarlo en DATA.
+    //    Si la instalación no tiene la tienda, website_id no existe y la columna
+    //    queda vacía en vez de romper la carga.
+    var ORDEN_WEB = ordenesWeb_(uid, pwd, moves);
     // ↩️ Notas de crédito huérfanas: las que revierten una factura que este
     //    informe no tiene (de otro año, o cancelada). Se marcan acá y se
     //    descartan abajo, con la cuenta a la vista al terminar.
@@ -588,7 +661,11 @@ function actualizarDatosOdoo_(silencioso) {
         ((move.partner_id && telMap[move.partner_id[0]]) || (line.partner_id ? (telMap[line.partner_id[0]] || "") : "")),
         // 📏 Unidad de medida de la línea. Sin esto, 10 cajas y 10 unidades suman
         // 20 y nadie se entera: es la causa clásica de que dos informes no cuadren.
-        (line.product_uom_id ? line.product_uom_id[1] : "")]);
+        (line.product_uom_id ? line.product_uom_id[1] : ""),
+        // 🌐 De dónde salió la venta: el pedido de origen y si ese pedido lo hizo
+        //    el cliente desde la tienda web.
+        String(move.invoice_origin || ""),
+        marcaWeb_(ORDEN_WEB, move.invoice_origin)]);
     });
   }
 
@@ -598,8 +675,8 @@ function actualizarDatosOdoo_(silencioso) {
     catch (e) { ss.toast("No se pudieron traer las remisiones: " + e.message, "⚠️", 10); }
   }
 
-  if (sheetData.getMaxColumns() < 39) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 39 - sheetData.getMaxColumns());
-  sheetData.getRange(1, 1, 1, 37).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono", "Unidad"]]).setFontWeight("bold");
+  if (sheetData.getMaxColumns() < 41) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 41 - sheetData.getMaxColumns());
+  sheetData.getRange(1, 1, 1, 39).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono", "Unidad", "Pedido de origen", "Venta por la web"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
   // Sello de última actualización: el dashboard lo muestra en el menú lateral.
   configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
@@ -680,7 +757,7 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
   if (REMISION_SOLO_SIN_FACTURAR) filtro.push(["invoice_status", "!=", "invoiced"]);
 
   var ordenes = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order", "search_read", [filtro],
-    { fields: ["name", "partner_id", "partner_shipping_id", "user_id", "team_id", "date_order", "state", "invoice_status"], limit: 20000 }) || [];
+    { fields: camposOrden_(uid, pwd), limit: 20000 }) || [];
   if (!ordenes.length) return 0;
 
   // Solo las que tienen una entrega en estado "Hecho" (las canceladas no cuentan).
@@ -769,7 +846,9 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
       vendedorEtiquetado, canalFinal, categoriaOriginal, productoNombre, precioUnit, Number(l.discount || 0),
       precioPromedio, cantidad, subtotal, total, total, subtotal, "PYG", montoPanel, "", "so-" + orden.id, teamName, entrega,
       (orden.partner_id ? (telMap[orden.partner_id[0]] || "") : ""),
-      (l.product_uom ? l.product_uom[1] : "")]);
+      (l.product_uom ? l.product_uom[1] : ""),
+      orden.name || "",
+      (HAY_WEBSITE === false ? "" : (orden.website_id ? "Sí" : "No"))]);
     agregadas++;
   });
   return agregadas;
