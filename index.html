@@ -762,6 +762,11 @@ const COMISION_CONVENIO_POR_DEFECTO = 0.15;
 const MOVER_VENTAS_WEB = true;
 const CANAL_WEB = "E-commerce";
 const VENDEDOR_WEB = "Venta Web";
+// 🙋 Vendedores que CONSERVAN sus ventas web: quedan en su canal y a su nombre.
+//    Osmar trabaja los convenios con los gimnasios, así que los socios que
+//    compran por la web con el cupón del gimnasio son trabajo suyo, aunque la
+//    compra la haya hecho el socio solo.
+const VENDEDORES_CONSERVAN_WEB = ["Osmar Andres Falcon Romero"];
 // El canal sobre el que el vendedor hace seguimiento (los mayoristas no entran).
 const CANAL_SEGUIMIENTO = "Consumidor Final";
 // Cuándo volver a escribirle: se lee la duración del producto de su propio
@@ -1198,8 +1203,10 @@ function normalizarData(filas) {
     // La sucursal casi nunca está en el cliente: está en la DIRECCIÓN DE ENTREGA
     // (columna 35). Garage Cross factura a la casa matriz y entrega en cada GTC.
     const env = partirCliente(r[34] || "");
-    // ¿Vino de la tienda web? La factura lo dice en la nota del pedido.
-    const esWeb = MOVER_VENTAS_WEB && !!String(r[44] || "").trim();
+    // ¿Vino de la tienda web? La factura lo dice en la nota del pedido. Las de
+    // los vendedores que las conservan quedan como están.
+    const esWeb = MOVER_VENTAS_WEB && !!String(r[44] || "").trim() &&
+                  !contieneAlguna(vend, VENDEDORES_CONSERVAN_WEB);
     const sucursal = env.sucursal
       || (env.base && env.base !== "Sin Cliente" && norm(env.base) !== norm(cli.base) ? env.base : "")
       || cli.sucursal;
