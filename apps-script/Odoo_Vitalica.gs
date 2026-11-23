@@ -155,6 +155,19 @@ const CLIENTES_EXCLUIDOS = ["VITALICA", "VITÁLICA"];
 const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce", "Tienda Naranja"];
 const CANAL_POR_DEFECTO = "Consumidor Final";
 
+// 🌐 Ventas de la tienda web. Las hace el cliente solo, así que no son de
+//    ningún vendedor: si no, la misma venta caía en el canal y a nombre de
+//    quien confirmara la factura en Odoo. Se reconocen por el «PEDIDO WEB» que
+//    la tienda deja escrito en la nota de la factura.
+//    MOVER_VENTAS_WEB en false deja todo como viene de Odoo.
+const MOVER_VENTAS_WEB = true;
+const CANAL_WEB = "E-commerce";
+const VENDEDOR_WEB = "Venta Web";
+// Vendedores que CONSERVAN sus ventas web, con su canal y su nombre. Osmar
+// trabaja los convenios con los gimnasios: el socio que compra por la web con
+// el cupón del gimnasio es trabajo suyo, aunque la compra la haya hecho solo.
+const VENDEDORES_CONSERVAN_WEB = ["OSMAR"];
+
 // 🎯 Cómo se clasifica cada factura: se mira el EQUIPO de ventas de Odoo
 //    (y si no, el nombre del vendedor). Primera coincidencia gana.
 //    Equipos reales que devolvió el descubrimiento (facturación 2026):
@@ -708,7 +721,18 @@ function actualizarDatosOdoo_(silencioso) {
       var sinVendedor = (vNorm === "" || vNorm.indexOf("SIN VENDEDOR") >= 0 || vNorm === "NULL" || vNorm === "FALSE");
       if (sinVendedor && EXCLUIR_FACTURAS_SIN_VENDEDOR) return;
 
-      var vendedorEtiquetado = (sinVendedor ? "Sin Vendedor" : vendedor.trim()) + " - " + canalFinal;
+      // 🌐 ¿La hizo el cliente en la tienda web? Entonces va al canal de la
+      //    tienda y a nombre de «Venta Web», salvo los vendedores que las
+      //    conservan. Así el objetivo de la tienda se carga como el de
+      //    cualquier vendedor, y a nadie le suma una venta que no hizo.
+      var pedidoWebLinea = deLaNota_(NOTAS[move.id], /PEDIDO\s+WEB\s*:?\s*([^\s·|]+)/i);
+      var esVentaWeb = MOVER_VENTAS_WEB && !!pedidoWebLinea &&
+                       !contieneAlguna_(vNorm, VENDEDORES_CONSERVAN_WEB);
+      if (esVentaWeb) canalFinal = CANAL_WEB;
+
+      var vendedorEtiquetado = esVentaWeb
+        ? (VENDEDOR_WEB + " - " + canalFinal)
+        : ((sinVendedor ? "Sin Vendedor" : vendedor.trim()) + " - " + canalFinal);
 
       var total = Number(line.price_total || 0), subtotal = Number(line.price_subtotal || 0), precioUnit = Number(line.price_unit || 0), cantidad = Number(line.quantity || 0), moneda = line.currency_id ? line.currency_id[1] : "PYG", tipoCambio = 1;
       if (moneda.toUpperCase().includes("USD")) { var montoUSD = Math.abs(Number(line.amount_currency || 0)), montoPYG = Math.abs(Number(line.balance || 0)); if (montoUSD > 0) tipoCambio = montoPYG / montoUSD; precioUnit = precioUnit * tipoCambio; total = total * tipoCambio; subtotal = subtotal * tipoCambio; }
@@ -763,7 +787,7 @@ function actualizarDatosOdoo_(silencioso) {
         (COBROS[move.id] || ""),
         String(move.ref || ""),
         (NOTAS[move.id] || ""),
-        deLaNota_(NOTAS[move.id], /PEDIDO\s+WEB\s*:?\s*([^\s·|]+)/i),
+        pedidoWebLinea,
         deLaNota_(NOTAS[move.id], /PAGO\s*:\s*([^·|\n]+)/i),
         deLaNota_(NOTAS[move.id], /CUP[OÓ]N\s*:?\s*([^·|\n]+)/i)]);
     });
