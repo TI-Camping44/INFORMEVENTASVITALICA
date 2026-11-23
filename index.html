@@ -733,6 +733,12 @@ const CONVENIOS_URL = 'https://script.google.com/macros/s/AKfycbz7ZaFdeg7A8yDgfD
 // Los convenios son su propia página (no un canal): lo que se mide ahí no es
 // venta de Vitálica sino la comisión que se le paga al gimnasio.
 const PAGINA_CONVENIOS = "__convenios";
+// ✏️ Pantalla de carga de objetivos (el WebApp_Objetivos_Vitalica.gs publicado como
+//    aplicación web). Con esto la página de Objetivos ofrece el botón para ir a
+//    cargarlos, en vez de que haya que acordarse del enlace cada mes.
+//    Es una URL de la organización: sólo entra quien tenga cuenta de camping44.
+//    Si queda vacía, el botón no aparece y todo lo demás sigue igual.
+const OBJETIVOS_URL = 'https://script.google.com/a/macros/camping44.com.py/s/AKfycbxb7Q3TDaCGBetC5UQnpnwwUxPu3aJBua8oDuaVKB1hbu4hew9IVQ2YqjqUZ61yg6Rp/exec';
 // 🎟️ Cupones que vienen en la NOTA de las facturas de la tienda web
 //    ("Cupón CGP (-33000)"). El tablero de convenios no las ve, porque allá sólo
 //    llegan las facturas con el cupón cargado como LÍNEA. Acá se cruzan por el
@@ -3924,6 +3930,16 @@ function renderNC(datos) {
 }
 
 // ------------------------------------------------------------ objetivos
+/* El enlace a la pantalla donde se cargan los objetivos. No aparece en una
+   vista compartida con los filtros fijos: ahí se está mirando un recorte, no
+   administrando. */
+function botonCargarObjetivos() {
+  if (!OBJETIVOS_URL || FILTROS_FIJOS) return "";
+  return '<a class="btn" href="' + esc(OBJETIVOS_URL) + '" target="_blank" rel="noopener" ' +
+         'style="display:inline-block;text-decoration:none" ' +
+         'title="Abre la pantalla donde se cargan las metas del mes">✏️ Cargar objetivos</a>';
+}
+
 function renderObjetivos(datos) {
   const cont = document.getElementById("vista-objetivos");
   if (!METAS || !METAS.hayMetas) {
@@ -3934,7 +3950,7 @@ function renderObjetivos(datos) {
       'meta por canal, meta por vendedor y meta por vendedor y categoría. Apenas se carguen, esta página ' +
       'muestra sola el avance, el ritmo diario necesario y la situación de cada vendedor.</p>' +
       '<p style="line-height:1.7;color:var(--muted)">Mientras tanto, el resto del panel funciona igual: ' +
-      'las ventas no dependen de los objetivos.</p></div>';
+      'las ventas no dependen de los objetivos.</p>' + botonCargarObjetivos() + '</div>';
     return;
   }
   // Los objetivos son del PERÍODO cargado en CONFIG (fecha inicio ▸ fecha fin), no del
@@ -3966,6 +3982,8 @@ function renderObjetivos(datos) {
   let h = '<div class="note">Los objetivos corresponden al período cargado en la planilla: <b>' + periodo +
     '</b> (corte al ' + (METAS.fCorte ? METAS.fCorte.toLocaleDateString("es-PY") : "?") +
     '). Esta página no usa el filtro de mes de arriba.</div>';
+  const btnCarga = botonCargarObjetivos();
+  if (btnCarga) h += '<div style="margin-bottom:12px">' + btnCarga + '</div>';
   h += '<div class="kpi-row">' +
     kpi("Meta del período", gs(meta), periodo) +
     kpi("Vendido (neto)", gs(vendido), pct(vendido, meta).toFixed(1) + "% de la meta") +
