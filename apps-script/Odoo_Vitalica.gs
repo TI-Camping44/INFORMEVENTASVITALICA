@@ -339,6 +339,38 @@ function ordenesWeb_(uid, pwd, moves) {
   return mapa;
 }
 
+/* 💵 Con qué se cobró cada factura. En Odoo el medio de cobro no está en la
+   factura sino en el pago que se le concilió, así que hay que ir a buscarlo a
+   account.payment. Devuelve un mapa id de factura ➜ "Diario · Medio".
+   Si la instalación no tiene ese campo de conciliación, devuelve vacío: la
+   columna queda en blanco y la carga sigue igual.                            */
+function cobrosPorFactura_(uid, pwd, moveIds) {
+  var mapa = {};
+  if (!moveIds || !moveIds.length) return mapa;
+  try {
+    var f = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.payment", "fields_get", [], { attributes: ["string"] });
+    if (!f || !f["reconciled_invoice_ids"]) return mapa;
+    var campos = ["journal_id", "reconciled_invoice_ids"];
+    if (f["payment_method_line_id"]) campos.push("payment_method_line_id");
+    for (var i = 0; i < moveIds.length; i += 400) {
+      var tanda = moveIds.slice(i, i + 400);
+      var pagos = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "account.payment", "search_read",
+        [[["reconciled_invoice_ids", "in", tanda]]], { fields: campos, limit: 5000 }) || [];
+      pagos.forEach(function (p) {
+        var texto = (p.journal_id ? p.journal_id[1] : "");
+        if (p.payment_method_line_id) texto += (texto ? " · " : "") + p.payment_method_line_id[1];
+        (p.reconciled_invoice_ids || []).forEach(function (idFac) {
+          if (!mapa[idFac]) mapa[idFac] = texto;
+          // Una factura cobrada en dos pagos (ej. parte en caja y parte en
+          // transferencia) muestra los dos, sin repetirlos.
+          else if (texto && mapa[idFac].indexOf(texto) < 0) mapa[idFac] += " + " + texto;
+        });
+      });
+    }
+  } catch (e) { /* sin permiso o sin el modelo: la columna queda vacía */ }
+  return mapa;
+}
+
 /** "Sí" / "No" / "" para la columna, a partir del documento de origen de la factura. */
 function marcaWeb_(mapa, origen) {
   if (!HAY_WEBSITE) return "";
@@ -511,7 +543,11 @@ function actualizarDatosOdoo_(silencioso) {
     // invoice_origin es el presupuesto/pedido del que salió la factura (S00123):
     // con eso se sabe si la venta entró por la tienda web o se cargó a mano, que
     // mirando sólo la factura no se distingue.
-    var _moveFields = ["invoice_user_id", "team_id", "move_type", "name", "invoice_date", "invoice_date_due", "state", "reversed_entry_id", "partner_id", "invoice_origin"];
+    // invoice_payment_term_id es la CONDICIÓN de pago pactada ("Pago inmediato",
+    // "30 días"); ref es la referencia que el vendedor o la tienda escriben en la
+    // factura. La columna "Condición" de siempre no es esto: se deduce de la fecha
+    // de vencimiento y sólo dice Contado o Crédito.
+    var _moveFields = ["invoice_user_id", "team_id", "move_type", "name", "invoice_date", "invoice_date_due", "state", "reversed_entry_id", "partner_id", "invoice_origin", "invoice_payment_term_id", "ref"];
     if (CAMPO_ETIQUETA) _moveFields.push(CAMPO_ETIQUETA);
     // 🏪 La SUCURSAL no está en el cliente de la factura, está en la dirección de
     // entrega (Garage Cross factura a la casa matriz y entrega en cada GTC).
@@ -526,6 +562,9 @@ function actualizarDatosOdoo_(silencioso) {
     //    Si la instalación no tiene la tienda, website_id no existe y la columna
     //    queda vacía en vez de romper la carga.
     var ORDEN_WEB = ordenesWeb_(uid, pwd, moves);
+    // 💵 Con qué se cobró cada factura (caja, transferencia, tarjeta…). No está en
+    //    la factura: está en los pagos que se le conciliaron.
+    var COBROS = cobrosPorFactura_(uid, pwd, [...new Set(moveIds)]);
     // ↩️ Notas de crédito huérfanas: las que revierten una factura que este
     //    informe no tiene (de otro año, o cancelada). Se marcan acá y se
     //    descartan abajo, con la cuenta a la vista al terminar.
@@ -665,7 +704,13 @@ function actualizarDatosOdoo_(silencioso) {
         // 🌐 De dónde salió la venta: el pedido de origen y si ese pedido lo hizo
         //    el cliente desde la tienda web.
         String(move.invoice_origin || ""),
-        marcaWeb_(ORDEN_WEB, move.invoice_origin)]);
+        marcaWeb_(ORDEN_WEB, move.invoice_origin),
+        // 📝 Lo que dice la línea en la factura. Puede no coincidir con el nombre
+        //    del producto: ahí se escriben los cupones, las promos y las notas.
+        String(line.name || ""),
+        (move.invoice_payment_term_id ? move.invoice_payment_term_id[1] : ""),
+        (COBROS[move.id] || ""),
+        String(move.ref || "")]);
     });
   }
 
@@ -675,8 +720,8 @@ function actualizarDatosOdoo_(silencioso) {
     catch (e) { ss.toast("No se pudieron traer las remisiones: " + e.message, "⚠️", 10); }
   }
 
-  if (sheetData.getMaxColumns() < 41) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 41 - sheetData.getMaxColumns());
-  sheetData.getRange(1, 1, 1, 39).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono", "Unidad", "Pedido de origen", "Venta por la web"]]).setFontWeight("bold");
+  if (sheetData.getMaxColumns() < 45) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 45 - sheetData.getMaxColumns());
+  sheetData.getRange(1, 1, 1, 43).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono", "Unidad", "Pedido de origen", "Venta por la web", "Descripción", "Condición de pago", "Forma de cobro", "Referencia"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
   // Sello de última actualización: el dashboard lo muestra en el menú lateral.
   configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
@@ -848,7 +893,8 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
       (orden.partner_id ? (telMap[orden.partner_id[0]] || "") : ""),
       (l.product_uom ? l.product_uom[1] : ""),
       orden.name || "",
-      (HAY_WEBSITE === false ? "" : (orden.website_id ? "Sí" : "No"))]);
+      (HAY_WEBSITE === false ? "" : (orden.website_id ? "Sí" : "No")),
+      String(l.name || ""), "", "", ""]);
     agregadas++;
   });
   return agregadas;
