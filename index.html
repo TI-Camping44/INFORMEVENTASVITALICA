@@ -551,9 +551,11 @@ h1, h2, h3, .card > h3, .k-lbl { text-wrap: balance; }
     <div class="card hide" id="card-web"><h3>🌐 Ventas por la tienda web <small id="sub-web"></small></h3>
       <div class="tbl-scroll" style="max-height:520px"><table id="t-web"></table></div>
       <div class="note" style="margin-top:8px">Lo que ve acá sale de la <b>nota que el pedido deja
-        escrita en la factura</b> (número de pedido, cómo se entrega, cómo se pagó y qué cupón se
-        usó). De ahí sale también que estas ventas vayan al canal <b>Venta Web</b> y no a nombre de
-        quien confirmó la factura en Odoo, que figura al final de cada fila.</div></div>
+        escrita en la factura</b>: número de pedido, cómo se entrega, cómo se pagó y qué cupón se usó.
+        Es el único dato que dice que una venta entró por la tienda, así que se muestra tal cual para
+        poder comprobarlo sin abrir Odoo. Las que gestiona un vendedor de convenios <b>quedan en su
+        canal y a su nombre</b>; las demás van al canal <b>Venta Web</b>, porque las hizo el cliente
+        solo. Al final de cada fila está quién cargó la factura en Odoo.</div></div>
 
     <div class="card" id="card-docs"><h3>Detalle de Documentos <small id="sub-docs"></small></h3>
       <div class="tbl-scroll" style="max-height:520px"><table id="t-docs"></table></div></div>
