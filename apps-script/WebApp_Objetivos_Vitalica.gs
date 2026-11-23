@@ -227,14 +227,11 @@ function wa_parseVivo(filas) {
   // Asegura los 6 canales base
   WA_CANALES.forEach(function (cn) { if (!(cn in canalMap)) out.canales.push({ canal: cn, monto: 0 }); });
 
-  // E-commerce = Tupi + Porter + Contimarket(=Julia Olmedo). Tupi y Porter son clientes (no están en
-  // la lista de vendedores de Odoo), así que los aseguramos en 0. Contimarket NO se agrega aparte:
-  // es la vendedora "Maria Julia Olmedo Cuevas", que ya está en la lista. Los tres, al ser canal
-  // E-commerce, suman al objetivo del canal cuando tocás "Auto-sumar canales".
-  ["TUPI", "PORTER"].forEach(function (nm) {
-    var existe = out.vendedores.some(function (v) { return wa_limpiarNombre(v.nombre).indexOf(nm) >= 0; });
-    if (!existe) out.vendedores.push({ nombre: nm, rawNombre: nm, total: 0, canal: "E-commerce", fila: -1 });
-  });
+  // (En Camping 44 acá se agregaban "Tupi" y "Porter" como vendedores de
+  //  E-commerce, porque allá son los marketplaces. En Vitálica no existen como
+  //  vendedores: la venta de la tienda va a nombre de "Venta Web" y la de
+  //  Tienda Naranja a su propio canal. Agregarlos dejaba dos filas fantasma en
+  //  la pantalla de carga y en los objetivos del informe.)
 
   // Marcas: tripletes desde col 11 (L). Vendedor en fila 3 (índice 2), luego pares marca/meta.
   if (filas[2]) {
@@ -725,7 +722,7 @@ function WA_HTML() {
 'function agregarMarcaNueva(){var v=document.getElementById("mkPickerNueva").value.trim();if(!v){toast("Escribí el nombre de la categoría","err");return;}agregarMarcaAV(v);document.getElementById("mkPickerNueva").value="";}' +
 
 'function addVend(){VISTA.vendedores.push({nombre:"",canal:"",total:0,fila:-1});FILTRO="";document.getElementById("buscar").value="";renderVend(false);}' +
-'function guessCanal(n){var u=(n||"").toUpperCase();if(u.indexOf("CONTIMARKET")>=0||u.indexOf("TUPI")>=0||u.indexOf("PORTER")>=0)return "E-commerce";return "";}' +
+'function guessCanal(n){var u=(n||"").toUpperCase();if(u.indexOf("E-COMMERCE")>=0||u.indexOf("VENTA WEB")>=0)return "E-commerce";if(u.indexOf("TIENDA NARANJA")>=0)return "Tienda Naranja";return "";}' +
 'function abrirPicker(){document.getElementById("pickerBg").style.display="block";var s=document.getElementById("pickerSearch");s.value="";renderPicker();setTimeout(function(){s.focus();},50);}' +
 'function cerrarPicker(){document.getElementById("pickerBg").style.display="none";}' +
 'function renderPicker(){' +

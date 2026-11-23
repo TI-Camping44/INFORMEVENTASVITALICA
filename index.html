@@ -946,6 +946,16 @@ function aNumero(v) {
   let s = String(v).replace(/[^0-9,.\-]/g, "");
   if (s.includes(",") && s.includes(".")) s = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
   else if (s.includes(",")) s = s.replace(",", ".");
+  else if (s.includes(".")) {
+    // Sólo puntos. Acá el punto es separador de MILES: una celda con formato de
+    // guaraníes se publica como «₲ 215.000.000», y leerlo como decimal daba 215.
+    // Así quedaron todos los objetivos en una millonésima parte. Se toma como
+    // decimal sólo cuando no puede ser miles: un único punto con uno o dos
+    // dígitos detrás ("1.5", "0.75").
+    const partes = s.split(".");
+    const ultimo = partes[partes.length - 1];
+    if (partes.length > 2 || ultimo.length === 3) s = partes.join("");
+  }
   const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
 }
@@ -4039,7 +4049,8 @@ function renderObjetivos(datos) {
 
   const ventasPor = (campo) => { const a = {}; datos.forEach(r => a[r[campo]] = (a[r[campo]] || 0) + r.monto); return a; };
   tablaAvance("t-obj-canal", METAS.canales, ventasPor("canal"), "Canal", dMes, dTr);
-  tablaAvance("t-obj-vend", METAS.vendedores, ventasPor("vendedor"), "Vendedor", dMes, dTr);
+  const ventasVend = ventasPor("vendedor");
+  tablaAvance("t-obj-vend", alinearMetas(METAS.vendedores, ventasVend), ventasVend, "Vendedor", dMes, dTr);
   // La familia del informe es la categoría del producto en Odoo: la misma con
   // la que se arman los rankings, así el objetivo y la venta hablan de lo mismo.
   tablaAvance("t-obj-fam", METAS.familias || {}, ventasPor("categoria"), "Familia", dMes, dTr);
@@ -4063,6 +4074,25 @@ function renderObjetivos(datos) {
           (f.venta >= esp ? "pos" : "neg") + "'>" + (f.obj > 0 ? p.toFixed(1) + "%" : "—") + "</td></tr>";
       }).join("") + "</tbody>"
     : '<tbody><tr><td class="empty">Sin objetivos por categoría cargados</td></tr></tbody>';
+}
+
+/* Los objetivos por vendedor se cargan con el canal pegado al nombre y en
+   mayúsculas ("JARA OJEDA, HUGO DAVID - MAYORISTA"), mientras que la venta
+   viene como la escribe Odoo ("Jara Ojeda, Hugo David"). Como la tabla cruzaba
+   los nombres tal cual, cada vendedor salía DOS VECES: una con su objetivo y
+   cero ventas, otra con sus ventas y cero objetivo. Acá se emparejan sin mirar
+   mayúsculas, tildes ni el canal del final; si una persona tiene objetivo en
+   dos canales, se suman, porque esta tabla es por persona (el detalle por
+   canal está en «Avance por Canal»). */
+function alinearMetas(metas, ventas) {
+  const porNombre = {};
+  Object.keys(ventas || {}).forEach(k => { porNombre[norm(soloNombre(k))] = k; });
+  const out = {};
+  Object.keys(metas || {}).forEach(k => {
+    const destino = porNombre[norm(soloNombre(k))] || k;
+    out[destino] = (out[destino] || 0) + (metas[k] || 0);
+  });
+  return out;
 }
 
 function tablaAvance(id, metas, ventas, etiqueta, dMes, dTr) {
