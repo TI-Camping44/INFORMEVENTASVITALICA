@@ -371,6 +371,13 @@ function cobrosPorFactura_(uid, pwd, moveIds) {
   return mapa;
 }
 
+/** Saca un dato de la nota de la factura con una expresión regular. */
+function deLaNota_(nota, re) {
+  if (!nota) return "";
+  var m = String(nota).match(re);
+  return m ? String(m[1]).trim() : "";
+}
+
 /** "Sí" / "No" / "" para la columna, a partir del documento de origen de la factura. */
 function marcaWeb_(mapa, origen) {
   if (!HAY_WEBSITE) return "";
@@ -595,6 +602,20 @@ function actualizarDatosOdoo_(silencioso) {
     moves.forEach(function (m) { if (m.partner_id) partnerIds.push(m.partner_id[0]); });
     var telMap = telefonosDeClientes_(uid, pwd, partnerIds);
 
+    // 📝 Las líneas de NOTA de la factura (sin producto y sin importe) son las que
+    //    el pedido web deja escritas: "PEDIDO WEB VIT-...", cómo se entrega, cómo
+    //    se pagó y qué cupón se usó. No suman plata, así que la carga las salteaba
+    //    y esa información se perdía. Se recogen antes, por factura, y después cada
+    //    línea de esa factura las lleva en sus columnas.
+    var NOTAS = {};
+    lines.forEach(function (l) {
+      if (l.product_id || l.price_total != 0 || l.price_subtotal != 0) return;
+      var txt = String(l.name || "").trim();
+      if (!txt || !l.move_id) return;
+      var id = l.move_id[0];
+      NOTAS[id] = NOTAS[id] ? (NOTAS[id] + " · " + txt) : txt;
+    });
+
     lines.forEach(line => {
       if (line.price_total == 0 && line.price_subtotal == 0 && !line.product_id) return;
 
@@ -669,7 +690,14 @@ function actualizarDatosOdoo_(silencioso) {
       var total = Number(line.price_total || 0), subtotal = Number(line.price_subtotal || 0), precioUnit = Number(line.price_unit || 0), cantidad = Number(line.quantity || 0), moneda = line.currency_id ? line.currency_id[1] : "PYG", tipoCambio = 1;
       if (moneda.toUpperCase().includes("USD")) { var montoUSD = Math.abs(Number(line.amount_currency || 0)), montoPYG = Math.abs(Number(line.balance || 0)); if (montoUSD > 0) tipoCambio = montoPYG / montoUSD; precioUnit = precioUnit * tipoCambio; total = total * tipoCambio; subtotal = subtotal * tipoCambio; }
 
-      var esDescuento = (marcaFinal === "Descuentos" || contieneAlguna_(pNorm, PALABRAS_DESCUENTO));
+      // 🏷️ Qué cuenta como descuento. Antes sólo lo que se llamaba "Descuento", y
+      //    por eso una línea como «10% en tu orden» o «Cupón CGP (-33000)», que en
+      //    Odoo viene en NEGATIVO, terminaba SUMANDO: más abajo a todo lo que no es
+      //    descuento se le fuerza el signo positivo. Ahora manda el signo que trae
+      //    Odoo: en una factura normal, una línea negativa es un descuento, se
+      //    llame como se llame.
+      var esDescuento = (marcaFinal === "Descuentos" || contieneAlguna_(pNorm, PALABRAS_DESCUENTO) ||
+                         (move.move_type === "out_invoice" && Number(line.price_subtotal || 0) < 0));
       if (move.move_type === "out_refund") {
           // Nota de crédito: el PRODUCTO va NEGATIVO (saca venta).
           // El DESCUENTO se INVIERTE respecto de lo que trae Odoo:
@@ -710,7 +738,11 @@ function actualizarDatosOdoo_(silencioso) {
         String(line.name || ""),
         (move.invoice_payment_term_id ? move.invoice_payment_term_id[1] : ""),
         (COBROS[move.id] || ""),
-        String(move.ref || "")]);
+        String(move.ref || ""),
+        (NOTAS[move.id] || ""),
+        deLaNota_(NOTAS[move.id], /PEDIDO\s+WEB\s*:?\s*([^\s·|]+)/i),
+        deLaNota_(NOTAS[move.id], /PAGO\s*:\s*([^·|\n]+)/i),
+        deLaNota_(NOTAS[move.id], /CUP[OÓ]N\s*:?\s*([^·|\n]+)/i)]);
     });
   }
 
@@ -720,8 +752,8 @@ function actualizarDatosOdoo_(silencioso) {
     catch (e) { ss.toast("No se pudieron traer las remisiones: " + e.message, "⚠️", 10); }
   }
 
-  if (sheetData.getMaxColumns() < 45) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 45 - sheetData.getMaxColumns());
-  sheetData.getRange(1, 1, 1, 43).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono", "Unidad", "Pedido de origen", "Venta por la web", "Descripción", "Condición de pago", "Forma de cobro", "Referencia"]]).setFontWeight("bold");
+  if (sheetData.getMaxColumns() < 49) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 49 - sheetData.getMaxColumns());
+  sheetData.getRange(1, 1, 1, 47).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono", "Unidad", "Pedido de origen", "Venta por la web", "Descripción", "Condición de pago", "Forma de cobro", "Referencia", "Nota de la factura", "Pedido web", "Pago (nota)", "Cupón (nota)"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
   // Sello de última actualización: el dashboard lo muestra en el menú lateral.
   configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
@@ -894,7 +926,7 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
       (l.product_uom ? l.product_uom[1] : ""),
       orden.name || "",
       (HAY_WEBSITE === false ? "" : (orden.website_id ? "Sí" : "No")),
-      String(l.name || ""), "", "", ""]);
+      String(l.name || ""), "", "", "", "", "", "", ""]);
     agregadas++;
   });
   return agregadas;
