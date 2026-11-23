@@ -767,6 +767,14 @@ const VENDEDOR_WEB = "Venta Web";
 //    compran por la web con el cupón del gimnasio son trabajo suyo, aunque la
 //    compra la haya hecho el socio solo.
 const VENDEDORES_CONSERVAN_WEB = ["Osmar Andres Falcon Romero"];
+// 🏷️ Equipos de Odoo que el informe manda a un canal distinto del que les
+//    tocaría. «Capital Humano» son las ventas a los propios colaboradores: no
+//    comisionan, así que van con Sin Comisiones y no con la venta de mostrador.
+//    Esto mismo está en el cargador: acá vale desde la próxima recarga del
+//    informe, sin esperar a que se vuelva a correr la carga de Odoo.
+const EQUIPO_A_CANAL = [
+  { match: "CAPITAL HUMANO", canal: "Sin Comisiones" }
+];
 // El canal sobre el que el vendedor hace seguimiento (los mayoristas no entran).
 const CANAL_SEGUIMIENTO = "Consumidor Final";
 // Cuándo volver a escribirle: se lee la duración del producto de su propio
@@ -1240,6 +1248,10 @@ function normalizarData(filas) {
       vendedor: esWeb ? VENDEDOR_WEB : vend,
       canal: (function () {
         if (esWeb) return CANAL_WEB;
+        const eq = String(r[33] || "").trim();
+        for (let i = 0; i < EQUIPO_A_CANAL.length; i++) {
+          if (contieneAlguna(eq, [EQUIPO_A_CANAL[i].match])) return EQUIPO_A_CANAL[i].canal;
+        }
         const c = String(r[18] || "").trim() || "Sin Canal";
         return UNIFICAR_CANALES[c] || c;
       })(),

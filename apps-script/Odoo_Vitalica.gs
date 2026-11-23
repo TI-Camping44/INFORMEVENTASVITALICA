@@ -175,6 +175,11 @@ const MAPEO_CANALES = [
   // entra en la página de Consumidor Final, así que se mapea ahí.
   { match: "SALES",            canal: "Consumidor Final" },
   { match: "SIN COMISION",     canal: "Sin Comisiones" },
+  // Capital Humano son las ventas a los propios colaboradores: no pagan
+  // comisión, así que van al mismo canal que el resto de lo que no comisiona.
+  // Sin esta regla caían en el canal por defecto (Consumidor Final) y se
+  // mezclaban con la venta de mostrador.
+  { match: "CAPITAL HUMANO",   canal: "Sin Comisiones" },
   { match: "E-COMMERCE",       canal: "E-commerce" },
   { match: "ECOMMERCE",        canal: "E-commerce" }
 ];
