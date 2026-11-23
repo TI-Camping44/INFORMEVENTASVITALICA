@@ -29,7 +29,7 @@ const WA_PUB_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRWQdgMG_3F
 const WA_GID_CONFIG = "57741673";
 const WA_GID_DATA = "690194065";   // hoja DATA (ventas de Odoo). Col 18 = Vendedor.
 const WA_HOJA = "CONFIG";
-const WA_CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce", "Tienda Naranja"];
+const WA_CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce", "Venta Web", "Tienda Naranja"];
 const WA_MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 // Vitálica arranca sin histórico previo: se va llenando mes a mes desde esta web app.
 const WA_SEED_B64 = "";
@@ -77,6 +77,7 @@ function wa_canalReal(vendedor, canalCSV) {
   var v = wa_limpiarNombre(vendedor), c = wa_limpiarNombre(canalCSV);
   var t = (v + " " + c);
   if (t.indexOf("TIENDA NARANJA") >= 0) return "Tienda Naranja";
+  if (t.indexOf("VENTA WEB") >= 0) return "Venta Web";
   if (t.indexOf("SIN COMISION") >= 0) return "Sin Comisiones";
   if (t.indexOf("ECOMMERCE") >= 0 || t.indexOf("E-COMMERCE") >= 0 || t.indexOf("E COMMERCE") >= 0) return "E-commerce";
   if (t.indexOf("MAYORISTA") >= 0 || t.indexOf("DISTRIBUIDOR") >= 0 || t.indexOf("GIMNASIO") >= 0) return "Mayorista";

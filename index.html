@@ -548,6 +548,13 @@ h1, h2, h3, .card > h3, .k-lbl { text-wrap: balance; }
         <table id="t-canales"></table></div>
     </div>
 
+    <div class="card hide" id="card-web"><h3>🌐 Ventas por la tienda web <small id="sub-web"></small></h3>
+      <div class="tbl-scroll" style="max-height:520px"><table id="t-web"></table></div>
+      <div class="note" style="margin-top:8px">Lo que ve acá sale de la <b>nota que el pedido deja
+        escrita en la factura</b> (número de pedido, cómo se entrega, cómo se pagó y qué cupón se
+        usó). De ahí sale también que estas ventas vayan al canal <b>Venta Web</b> y no a nombre de
+        quien confirmó la factura en Odoo, que figura al final de cada fila.</div></div>
+
     <div class="card" id="card-docs"><h3>Detalle de Documentos <small id="sub-docs"></small></h3>
       <div class="tbl-scroll" style="max-height:520px"><table id="t-docs"></table></div></div>
   </div>
@@ -656,7 +663,7 @@ const PLAN_VERDE = 95, PLAN_AMBAR = 75;
 // TI-0106: Tienda Naranja es un canal propio (marketplace), al mismo nivel que
 // E-commerce y con su objetivo mensual aparte. El de Camping 44 es Unicentro y
 // vive en el informe de Camping 44: cada canal queda sólo en su empresa.
-const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce", "Tienda Naranja"];
+const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce", "Venta Web", "Tienda Naranja"];
 
 // Canales que se muestran unificados. Se aplica acá también (no solo en el Apps
 // Script) para que tenga efecto inmediato, sin esperar el re-sync de la planilla.
@@ -760,7 +767,7 @@ const COMISION_CONVENIO_POR_DEFECTO = 0.15;
 //    Se reconocen por el «PEDIDO WEB» que la tienda deja escrito en la factura.
 //    Poner en false devuelve todo a como venía de Odoo.
 const MOVER_VENTAS_WEB = true;
-const CANAL_WEB = "E-commerce";
+const CANAL_WEB = "Venta Web";
 const VENDEDOR_WEB = "Venta Web";
 // 🙋 Vendedores que CONSERVAN sus ventas web: quedan en su canal y a su nombre.
 //    Osmar trabaja los convenios con los gimnasios, así que los socios que
@@ -818,7 +825,7 @@ const CANAL_POR_CLIENTE = [
 ];
 const ICONO_CANAL = {
   "Mayorista": "🏢", "Consumidor Final": "🛍️", "Sin Comisiones": "📄",
-  "E-commerce": "🛒", "Tienda Naranja": "🍊"
+  "E-commerce": "🛒", "Venta Web": "🌐", "Tienda Naranja": "🍊"
 };
 
 // Un cliente es ACTIVO si compró en los últimos N meses.
@@ -2128,6 +2135,45 @@ function alternarClientes() {
   aplicar();
 }
 
+/* De dónde sale que una venta sea «de la web»: de la nota del pedido que queda
+   escrita en la factura. Como esa nota es el único dato que lo dice, se muestra
+   tal cual, para que cualquiera pueda comprobarlo sin entrar a Odoo. */
+function renderWeb(datos) {
+  const card = document.getElementById("card-web");
+  if (!card) return;
+  const porFactura = {};
+  datos.forEach(r => {
+    if (!r.pedidoWeb) return;
+    const k = r.facturaId;
+    if (!porFactura[k]) porFactura[k] = {
+      fecha: r.fecha, ymd: r.ymd, comprobante: r.factura, cliente: r.clienteCompleto,
+      pedido: r.pedidoWeb, pago: r.pagoWeb, cupon: r.cupon,
+      entrega: r.sucursal || r.baseEntrega || "", quien: r.vendedorOdoo || "", monto: 0
+    };
+    porFactura[k].monto += r.monto;
+  });
+  const filas = Object.keys(porFactura).map(k => porFactura[k])
+    .sort((a, b) => String(b.ymd).localeCompare(String(a.ymd)));
+  card.classList.toggle("hide", !filas.length);
+  if (!filas.length) return;
+  const total = filas.reduce((s, f) => s + f.monto, 0);
+  document.getElementById("sub-web").textContent =
+    filas.length + " comprobantes · " + gs(total);
+  document.getElementById("t-web").innerHTML =
+    '<thead><tr><th>Fecha</th><th>Comprobante</th><th class="col-nombre">Cliente</th>' +
+    '<th>Pedido web</th><th>Pago</th><th>Cupón</th><th>Entrega</th>' +
+    '<th class="num w-monto">Neto s/IVA</th><th>Cargó en Odoo</th></tr></thead><tbody>' +
+    filas.map(f =>
+      '<tr><td>' + f.fecha.toLocaleDateString("es-PY") + '</td><td>' + esc(f.comprobante) +
+      '</td><td class="col-nombre"><span class="txt" title="' + esc(f.cliente) + '">' + esc(f.cliente) +
+      '</span></td><td>' + esc(f.pedido) + '</td><td>' + esc(f.pago || "—") + '</td><td>' +
+      (f.cupon ? '<span class="pin-nc">' + esc(f.cupon) + '</span>' : "—") + '</td><td>' +
+      esc(f.entrega || "—") + '</td><td class="num">' + num(f.monto) + '</td><td>' +
+      esc(f.quien || "—") + '</td></tr>').join("") +
+    '<tr class="total-row"><td colspan="7">Total (' + filas.length + ')</td><td class="num">' +
+    num(total) + '</td><td></td></tr></tbody>';
+}
+
 function renderDatos(datos) {
   // Los muestrarios se muestran SIEMPRE en su propio KPI, aunque el filtro de
   // documento los esté dejando afuera: así se ve qué queda sin contar.
@@ -2143,6 +2189,7 @@ function renderDatos(datos) {
     vistaClientes === "grupo" ? "Cliente" : "Cliente · Sucursal",
     { cantidad: true, facturas: true, campo: campoCli });
   tablaRanking("t-vendedores", agrupar(datos, "vendedor", true), "Vendedor", { cantidad: true, facturas: true, topN: 30, campo: "vendedor" });
+  renderWeb(datos);
   tablaRanking("t-categorias", agrupar(datos, "categoria", true), "Categoría", { cantidad: true, topN: 30, campo: "categoria" });
   const porCanal = agrupar(datos, "canal", true);
   tablaRanking("t-canales", porCanal, "Canal", { cantidad: true, facturas: true, topN: 30, campo: "canal" });

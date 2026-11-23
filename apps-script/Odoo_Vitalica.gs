@@ -152,7 +152,7 @@ const CLIENTES_EXCLUIDOS = ["VITALICA", "VITÁLICA"];
 // nivel que E-commerce y con su objetivo mensual aparte. Unicentro es el
 // equivalente de Camping 44 y vive en el informe de Camping 44, no acá: así
 // cada canal queda sólo en su empresa.
-const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce", "Tienda Naranja"];
+const CANALES = ["Mayorista", "Consumidor Final", "Sin Comisiones", "E-commerce", "Venta Web", "Tienda Naranja"];
 const CANAL_POR_DEFECTO = "Consumidor Final";
 
 // 🌐 Ventas de la tienda web. Las hace el cliente solo, así que no son de
@@ -161,7 +161,7 @@ const CANAL_POR_DEFECTO = "Consumidor Final";
 //    la tienda deja escrito en la nota de la factura.
 //    MOVER_VENTAS_WEB en false deja todo como viene de Odoo.
 const MOVER_VENTAS_WEB = true;
-const CANAL_WEB = "E-commerce";
+const CANAL_WEB = "Venta Web";
 const VENDEDOR_WEB = "Venta Web";
 // Vendedores que CONSERVAN sus ventas web, con su canal y su nombre. Osmar
 // trabaja los convenios con los gimnasios: el socio que compra por la web con
