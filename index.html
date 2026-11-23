@@ -733,6 +733,19 @@ const CONVENIOS_URL = 'https://script.google.com/macros/s/AKfycbz7ZaFdeg7A8yDgfD
 // Los convenios son su propia página (no un canal): lo que se mide ahí no es
 // venta de Vitálica sino la comisión que se le paga al gimnasio.
 const PAGINA_CONVENIOS = "__convenios";
+// 🎟️ Cupones que vienen en la NOTA de las facturas de la tienda web
+//    ("Cupón CGP (-33000)"). El tablero de convenios no las ve, porque allá sólo
+//    llegan las facturas con el cupón cargado como LÍNEA. Acá se cruzan por el
+//    principio del código: a la izquierda el código, a la derecha el nombre del
+//    convenio tal como lo llama ese tablero. Si no existe allá, se usa igual el
+//    nombre de la derecha y se liquida con la comisión por defecto.
+const CUPON_A_CONVENIO = [
+  { cupon: "CGP",  convenio: "CG Performance" },
+  { cupon: "GTC",  convenio: "Garage Cross" },
+  { cupon: "BIGG", convenio: "BIGG" },
+  { cupon: "RM",   convenio: "RM" }
+];
+const COMISION_CONVENIO_POR_DEFECTO = 0.15;
 // El canal sobre el que el vendedor hace seguimiento (los mayoristas no entran).
 const CANAL_SEGUIMIENTO = "Consumidor Final";
 // Cuándo volver a escribirle: se lee la duración del producto de su propio
@@ -1218,6 +1231,13 @@ function normalizarData(filas) {
       // Unidad de medida de la línea (columna 37). Con planillas viejas llega
       // vacía y la auditoría lo dice, en vez de dar por hecho que es una sola.
       unidad: String(r[36] || "").trim(),
+      // 🌐 Lo que el pedido de la tienda web deja escrito en la factura (columnas
+      //    45 a 47). Con planillas viejas llegan vacíos y todo sigue igual.
+      pedidoWeb: String(r[44] || "").trim(),
+      pagoWeb: String(r[45] || "").trim(),
+      cupon: String(r[46] || "").trim(),
+      // El importe CON IVA, que es con el que algunos convenios liquidan.
+      montoConIva: aNumero(r[26]),
       monto: aNumero(r[30])
     });
   }
@@ -2825,22 +2845,78 @@ function convenioEnPeriodo(f) {
   if (filtros.mes && +fecha.slice(5, 7) !== +filtros.mes) return false;
   return true;
 }
+/* ---------------------------------------------- cupones de la tienda web
+   Las ventas que entran por la web llevan el cupón del gimnasio escrito en la
+   NOTA de la factura, no como una línea. El tablero de convenios sólo trae las
+   que lo tienen como línea, así que estas quedaban afuera de la liquidación.
+   Acá se arman con la misma forma que las del tablero para poder mezclarlas.  */
+function codigoCupon(cupon) {
+  // "CGP (-33000)" ➜ "CGP"
+  return String(cupon || "").split("(")[0].trim().toUpperCase();
+}
+function convenioDeCupon(codigo, nombresExistentes) {
+  const c = norm(codigo);
+  for (let i = 0; i < CUPON_A_CONVENIO.length; i++) {
+    if (c.indexOf(norm(CUPON_A_CONVENIO[i].cupon)) !== 0) continue;
+    const alias = CUPON_A_CONVENIO[i].convenio;
+    // Se prefiere el nombre tal como lo escribe el tablero, para que las
+    // facturas de los dos lados caigan en la misma fila y no en dos parecidas.
+    const igual = (nombresExistentes || []).find(n => norm(n).includes(norm(alias)) || norm(alias).includes(norm(n)));
+    return igual || alias;
+  }
+  return "";
+}
+function filasConvenioWeb(nombresExistentes, yaEstan) {
+  if (!FILAS.length) return [];
+  const porFactura = {};
+  FILAS.forEach(r => {
+    if (!r.cupon) return;
+    const codigo = codigoCupon(r.cupon);
+    const convenio = convenioDeCupon(codigo, nombresExistentes);
+    if (!convenio) return;                       // cupón que no es de un convenio conocido
+    if (yaEstan && yaEstan.has(r.factura)) return;   // ya vino del tablero: no se cuenta dos veces
+    const k = r.facturaId;
+    if (!porFactura[k]) porFactura[k] = {
+      fecha: r.ymd, comprobante: r.factura, cliente: r.clienteCompleto,
+      convenio: convenio, sucursal: r.sucursal || r.baseEntrega || "",
+      codigo: codigo, origen: "Cupón", nutri: false,
+      tipo: r.esNC ? "Nota de Crédito" : "Factura",
+      sinIva: 0, conIva: 0, deLaWeb: true
+    };
+    porFactura[k].sinIva += r.monto;
+    porFactura[k].conIva += r.montoConIva;
+  });
+  return Object.keys(porFactura).map(k => porFactura[k]);
+}
+
 function renderConvenios() {
   const el = document.getElementById("convenios-gym");
   if (!el) return;
   if (PAGINA !== PAGINA_CONVENIOS) return;
   const titulo = '<h3>🤝 Convenios con gimnasios · facturas con cupón <small>';
   if (!CONVENIOS) { el.innerHTML = '<div class="card">' + titulo + '</small></h3><div class="empty">Cargando convenios…</div></div>'; return; }
-  if (CONVENIOS.error) { el.innerHTML = '<div class="card">' + titulo + '</small></h3><div class="empty">No se pudieron leer los convenios (' + esc(CONVENIOS.error) + ').</div></div>'; return; }
+
+  // Las de la tienda web se arman de la planilla, así que la página sirve igual
+  // aunque el tablero de convenios no conteste.
+  const listaTablero = (CONVENIOS.convenios || []).slice();
+  const yaEstan = new Set((CONVENIOS.filas || []).map(f => String(f.comprobante || "").trim()));
+  const web = filasConvenioWeb(listaTablero.map(c => c.nombre), yaEstan);
+  if (CONVENIOS.error && !web.length) { el.innerHTML = '<div class="card">' + titulo + '</small></h3><div class="empty">No se pudieron leer los convenios (' + esc(CONVENIOS.error) + ').</div></div>'; return; }
+  // Un convenio que todavía no está en el tablero se agrega con la comisión por defecto.
+  web.forEach(f => {
+    if (!listaTablero.some(c => c.nombre === f.convenio)) {
+      listaTablero.push({ nombre: f.convenio, comision: COMISION_CONVENIO_POR_DEFECTO, soloWeb: true });
+    }
+  });
 
   const conIva = CONVENIOS.base === "Con IVA";
   const base = f => conIva ? f.conIva : f.sinIva;
-  const filas = CONVENIOS.filas.filter(convenioEnPeriodo);
+  const filas = (CONVENIOS.filas || []).concat(web).filter(convenioEnPeriodo);
   const periodo = (filtros.desde || filtros.hasta)
     ? "del " + (filtros.desde || "inicio") + " al " + (filtros.hasta || "hoy")
     : (filtros.mes ? MESES[+filtros.mes] + " " : "Año ") + filtros.anio;
 
-  const res = CONVENIOS.convenios.map(c => {
+  const res = listaTablero.map(c => {
     const fs = filas.filter(f => f.convenio === c.nombre);
     const fac = fs.filter(f => f.tipo === "Factura");
     const monto = fs.reduce((s, f) => s + base(f), 0);
@@ -2861,7 +2937,7 @@ function renderConvenios() {
     '</td><td class="num">' + tot("nutri") + '</td><td class="num">' + num(tot("monto")) + '</td><td class="num"></td><td class="num">' +
     num(tot("com")) + '</td></tr></tbody>';
 
-  const comDe = f => { const c = CONVENIOS.convenios.find(x => x.nombre === f.convenio); return c ? base(f) * c.comision : 0; };
+  const comDe = f => { const c = listaTablero.find(x => x.nombre === f.convenio); return c ? base(f) * c.comision : 0; };
   const det = filas.slice().sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
   const detalle = det.length
     ? '<thead><tr><th>Fecha</th><th>Comprobante</th><th class="col-nombre">Cliente</th><th>Convenio</th><th>Sucursal</th><th>Cupón</th>' +
@@ -2869,6 +2945,7 @@ function renderConvenios() {
       det.map(f => '<tr><td>' + String(f.fecha).split("-").reverse().join("/") + '</td><td>' + esc(f.comprobante) +
         (f.tipo !== "Factura" ? " ↩" : "") + '</td><td class="col-nombre">' + esc(f.cliente) + '</td><td>' + esc(f.convenio) +
         '</td><td>' + esc(f.sucursal) + '</td><td>' + (f.origen === "Cupón" ? esc(f.codigo || "Gimnasio") : "Nutricionista") +
+        (f.deLaWeb ? ' <span class="pin-plan">web</span>' : "") +
         '</td><td class="num">' + num(base(f)) + '</td><td class="num">' + num(comDe(f)) + '</td></tr>').join("") + '</tbody>'
     : '<tbody><tr><td class="empty">No hay facturas con cupón de convenio en ' + esc(periodo) + '.</td></tr></tbody>';
 
@@ -2883,7 +2960,10 @@ function renderConvenios() {
     '<div class="card">' + titulo + esc(periodo) + (CONVENIOS.actualizado ? " · datos de Odoo al " + esc(CONVENIOS.actualizado) : "") +
       '</small></h3><div class="tbl-scroll"><table>' + tabla + '</table></div>' +
       '<div class="note" style="margin-top:8px">Solo facturas donde se usó un cupón: el del gimnasio (GTCLUQ, BIGGCEN, RMLAM…) ' +
-      'o uno de nutricionista con el cliente marcado como del gimnasio. Son ventas <b>a cada cliente</b>, no al gimnasio: ' +
+      'o uno de nutricionista. Las que entran por la <b>tienda web</b> llevan el cupón escrito en la nota de la ' +
+      'factura y no como una línea, así que el tablero de convenios no las ve: esas las suma el informe desde la ' +
+      'planilla y van marcadas <span class="pin-plan">web</span> en el detalle. ' +
+      'Son ventas <b>a cada cliente</b>, no al gimnasio: ' +
       'ya están contadas en su canal (casi todas en Consumidor Final) y acá se muestran aparte sólo para liquidar la ' +
       'comisión. La reposición que el gimnasio compra para revender no entra acá: es venta <b>Mayorista</b>. ' +
       'Comisión sobre el total ' + (conIva ? "con" : "sin") + ' IVA; las notas de crédito restan.</div></div>' +
