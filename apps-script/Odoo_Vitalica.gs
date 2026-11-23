@@ -91,6 +91,12 @@ const VENDEDORES_EXCLUIDOS = [];
 
 // 🚫 Vendedores que sí se traen a DATA pero NO se muestran en tablas/rankings.
 const VENDEDORES_IGNORADOS = [];
+// 🎯 Cuántos meses hacia atrás se mira para decidir QUÉ VENDEDORES aparecen en la
+//    lista de objetivos del CONFIG. Sin esto la lista sólo crece: quedaban 23
+//    combinaciones vendedor-canal, muchas de un solo comprobante o de canales que
+//    ya no existen, y cargar los objetivos de dos vendedores era una búsqueda.
+//    Al que ya tiene un objetivo cargado NO se lo saca nunca, aunque no venda.
+const MESES_VENDEDOR_ACTIVO = 3;
 
 // 🚫 Equipos de venta de Odoo excluidos del panel.
 const EQUIPOS_EXCLUIDOS = [];
@@ -453,25 +459,37 @@ function sincronizarMarcasConfig() {
   const ss = SpreadsheetApp.getActiveSpreadsheet(); let configSheet = ss.getSheetByName(HOJA_CONFIG), sheetData = ss.getSheetByName(HOJA_DESTINO);
   if (!configSheet) { configSheet = ss.insertSheet(HOJA_CONFIG); crearEstructuraConfig(configSheet); return; }
   var data = configSheet.getDataRange().getValues(), vendedores = [], metasTotalesExistentes = {};
+
+  // 🎯 Quién vendió hace poco. La lista de objetivos ofrece a estos, más los que
+  //    ya tienen un objetivo cargado: así no arrastra para siempre al que facturó
+  //    una vez en marzo ni a los canales que se renombraron.
+  var ACTIVOS = {};
+  if (sheetData && sheetData.getLastRow() > 1) {
+    var _h = new Date(), _corte = (_h.getFullYear() * 12 + _h.getMonth() + 1) - (MESES_VENDEDOR_ACTIVO - 1);
+    sheetData.getRange(2, 1, sheetData.getLastRow() - 1, sheetData.getLastColumn()).getValues().forEach(function (row) {
+      var v = row[17] ? row[17].toString().trim() : "";
+      if (!v || v === "Sin Vendedor" || v.indexOf("Sin Vendedor") === 0) return;
+      var a = Number(row[2] || 0), m = Number(row[3] || 0);
+      if (!a || !m || (a * 12 + m) < _corte) return;
+      ACTIVOS[v] = true;
+    });
+  }
+
   for (var i = 3; i < data.length; i++) {
     if (data[i][8]) {
       let vStr = data[i][8].toString().trim(), vNorm = vStr.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
       if (VENDEDORES_IGNORADOS.some(ign => vNorm.includes(ign))) continue;
+      var tieneMeta = data[i][9] !== "" && data[i][9] !== null && Number(data[i][9] || 0) !== 0;
+      if (!tieneMeta && !ACTIVOS[vStr]) continue;     // sin ventas recientes y sin objetivo: se saca
       if (!vendedores.includes(vStr)) vendedores.push(vStr);
       metasTotalesExistentes[vStr] = data[i][9] || "";
     }
   }
-  if (sheetData && sheetData.getLastRow() > 1) {
-    let dataVals = sheetData.getRange(2, 1, sheetData.getLastRow() - 1, sheetData.getLastColumn()).getValues();
-    dataVals.forEach(row => {
-      let v = row[17] ? row[17].toString().trim() : "";
-      if (v && v !== "Sin Vendedor") {
-        let vNorm = v.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-        if (VENDEDORES_IGNORADOS.some(ign => vNorm.includes(ign))) return;
-        if (!vendedores.includes(v) && v !== "Sin Vendedor") vendedores.push(v);
-      }
-    });
-  }
+  Object.keys(ACTIVOS).forEach(function (v) {
+    var vNorm = v.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    if (VENDEDORES_IGNORADOS.some(ign => vNorm.includes(ign))) return;
+    if (!vendedores.includes(v)) vendedores.push(v);
+  });
   let maxR = configSheet.getMaxRows(); if (maxR > 3) configSheet.getRange(4, 9, maxR - 3, 2).clearContent();
   let outI = vendedores.map(v => [v, metasTotalesExistentes[v] || ""]); configSheet.getRange(4, 9, outI.length, 2).setValues(outI);
   var existingGoals = {};
