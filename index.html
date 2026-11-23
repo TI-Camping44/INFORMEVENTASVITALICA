@@ -752,6 +752,16 @@ const CUPON_A_CONVENIO = [
   { cupon: "RM",   convenio: "RM" }
 ];
 const COMISION_CONVENIO_POR_DEFECTO = 0.15;
+// 🌐 Las ventas que entran por la tienda web no las vendió nadie: las hizo el
+//    cliente solo. Hasta acá caían en el canal y a nombre de quien confirmara la
+//    factura en Odoo, así que la misma venta aparecía en Consumidor Final o en
+//    Sin Comisiones según quién la tocara, y le sumaba o restaba a un vendedor
+//    que no estuvo. Con esto van todas al mismo lugar y con el mismo nombre.
+//    Se reconocen por el «PEDIDO WEB» que la tienda deja escrito en la factura.
+//    Poner en false devuelve todo a como venía de Odoo.
+const MOVER_VENTAS_WEB = true;
+const CANAL_WEB = "E-commerce";
+const VENDEDOR_WEB = "Venta Web";
 // El canal sobre el que el vendedor hace seguimiento (los mayoristas no entran).
 const CANAL_SEGUIMIENTO = "Consumidor Final";
 // Cuándo volver a escribirle: se lee la duración del producto de su propio
@@ -1188,6 +1198,8 @@ function normalizarData(filas) {
     // La sucursal casi nunca está en el cliente: está en la DIRECCIÓN DE ENTREGA
     // (columna 35). Garage Cross factura a la casa matriz y entrega en cada GTC.
     const env = partirCliente(r[34] || "");
+    // ¿Vino de la tienda web? La factura lo dice en la nota del pedido.
+    const esWeb = MOVER_VENTAS_WEB && !!String(r[44] || "").trim();
     const sucursal = env.sucursal
       || (env.base && env.base !== "Sin Cliente" && norm(env.base) !== norm(cli.base) ? env.base : "")
       || cli.sucursal;
@@ -1218,12 +1230,16 @@ function normalizarData(filas) {
       })(),
       grupoCliente: "",            // lo asigna agruparClientes()
       categoria: String(r[15] || "").trim() || "Sin Categoría",
-      vendedor: vend,
+      vendedor: esWeb ? VENDEDOR_WEB : vend,
       canal: (function () {
+        if (esWeb) return CANAL_WEB;
         const c = String(r[18] || "").trim() || "Sin Canal";
         return UNIFICAR_CANALES[c] || c;
       })(),
       equipo: String(r[33] || r[18] || "").trim(),   // equipo de venta tal cual está en Odoo
+      // El equipo y el vendedor ORIGINALES de Odoo, por si hace falta rastrear
+      // quién confirmó una factura que acá figura como venta web.
+      vendedorOdoo: vend,
       // El producto viene como "[5901330026461] Creatina Polvo OLIMP...": se saca el código.
       producto: String(r[20] || "").replace(/^\[[^\]]*\]\s*/, "").trim() || "Varios",
       // El código entre corchetes es el mismo que usa el tablero de stock como
