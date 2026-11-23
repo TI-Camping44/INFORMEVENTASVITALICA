@@ -21,9 +21,9 @@
 //  ▸ editar la existente ▸ nueva versión (así la URL no cambia).
 // ============================================================================
 
-// gid de la hoja CONFIG publicada (el mismo que usa el dashboard).
-// ⚠️ COMPLETAR con la planilla de VITÁLICA: Archivo ▸ Compartir ▸ Publicar en la web.
-//    Es la misma URL base que usa el index.html del dashboard.
+// La planilla publicada de Vitálica, la misma que lee el informe (index.html).
+// Si alguna vez se vuelve a publicar la planilla y cambia, hay que cambiarla en
+// los dos lados: acá y en SHEET_PUB_BASE del index.html.
 const WA_PUB_BASE = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRWQdgMG_3FJEWqg8fzF1CAkqftbsv7M3a9UpzRUriZyXBoDTbPamjJIomO-v4Mt7V7wOxVtm5APoRD/pub";
 // Los gid reales de la planilla "INFORME DE VENTAS VITALICA".
 const WA_GID_CONFIG = "57741673";
