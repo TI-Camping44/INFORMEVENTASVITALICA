@@ -51,7 +51,7 @@ Réplica de lo que hoy tiene el informe de Looker Studio, más el módulo de obj
   venta a cada cliente —se facturan a la persona, casi siempre en Consumidor
   Final— y el gimnasio cobra su comisión: eso tiene su propia página,
   **🤝 Convenio Gimnasios**, que no es un canal sino la liquidación de la
-  comisión. Ahí se muestran los convenios con GTC, BIGG, RM y CG Performance. Los datos salen del
+  comisión. Ahí se muestran los convenios con GTC, BIGG, RM, CG Performance y MBARETE BOX. Los datos salen del
   Apps Script de la planilla «Panel GTC · Ventas con cupón Vitalica», que trae de
   Odoo **sólo las facturas con cupón** (el del gimnasio o el de nutricionista de
   un cliente del gimnasio) y calcula la comisión. Muchas de esas facturas entran
