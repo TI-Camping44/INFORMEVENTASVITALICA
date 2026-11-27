@@ -1897,11 +1897,24 @@ function aplicarInterno() {
         : PAGINA === "__plan" ? "Plan Estratégico Comercial"
           : PAGINA === "__seguimiento" ? "Seguimiento de Clientes" : PAGINA;
   document.getElementById("txt-pagina").textContent = nombrePagina;
+  // El subtítulo tiene que decir el período que se está mirando DE VERDAD. Con un
+  // filtro de fechas puesto seguía diciendo "Año 2026", y entonces un día sin
+  // facturas parecía un año sin facturas.
+  const dia = d => String(d).split("-").reverse().join("/");
+  const periodoTxt = (filtros.desde || filtros.hasta)
+    ? (filtros.desde && filtros.hasta
+        ? (filtros.desde === filtros.hasta ? dia(filtros.desde) : dia(filtros.desde) + " al " + dia(filtros.hasta))
+        : (filtros.desde ? "desde el " + dia(filtros.desde) : "hasta el " + dia(filtros.hasta)))
+    : (filtros.mes ? MESES[+filtros.mes] + " " : "Año ") + filtros.anio;
+  // Lo entregado sin facturar se cuenta aparte: si no se dice, un día en que sólo
+  // hubo entregas pendientes de facturar se lee como un día sin ventas.
+  const nRem = esConv ? 0 : filtrar(true).filter(r => r.esRemision).length;
   document.getElementById("txt-pagina-sub").textContent =
-    (filtros.mes ? MESES[+filtros.mes] + " " : "Año ") + filtros.anio +
+    periodoTxt +
     // En la página de convenios, las líneas de la venta no vienen al caso:
     // lo que se cuenta ahí son las facturas con cupón.
-    (esConv ? "" : " · " + num(datos.length) + " líneas de factura");
+    (esConv ? "" : " · " + num(datos.length) + " líneas de factura" +
+                   (nRem ? " · " + num(nRem) + " entregadas sin facturar" : ""));
 
   reflejarUrl(nombrePagina);
   renderChips();
