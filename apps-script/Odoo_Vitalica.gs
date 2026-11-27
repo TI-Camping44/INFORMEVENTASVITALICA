@@ -915,7 +915,10 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
 
   var lineas = execute_kw(ODOO_URL, ODOO_DB, uid, pwd, "sale.order.line", "search_read",
     [[["order_id", "in", ids]]],
-    { fields: ["order_id", "product_id", "product_uom_qty", "price_subtotal", "price_total", "price_unit", "discount", "name", "product_uom"], limit: 80000 }) || [];
+    // qty_delivered viene NETO de devoluciones, y qty_invoiced es lo ya facturado:
+    // con esos dos se sabe lo que de verdad queda por facturar.
+    { fields: ["order_id", "product_id", "product_uom_qty", "qty_delivered", "qty_invoiced",
+               "price_subtotal", "price_total", "price_unit", "discount", "name", "product_uom"], limit: 80000 }) || [];
   if (!lineas.length) return 0;
 
   var prodIds = [];
@@ -970,8 +973,21 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
     if (f.length !== 3) return;
     var fechaStr = Number(f[2]) + "/" + Number(f[1]) + "/" + Number(f[0]);
 
-    var subtotal = Number(l.price_subtotal || 0), total = Number(l.price_total || 0);
-    var cantidad = Number(l.product_uom_qty || 0), precioUnit = Number(l.price_unit || 0);
+    // 📦 Lo que de verdad falta facturar: lo ENTREGADO NETO menos lo FACTURADO.
+    //    Antes se tomaba la cantidad pedida entera, y por eso el informe mostraba
+    //    centenares de millones "entregados sin facturar" que no existían: Odoo
+    //    marca la orden "Por facturar" porque factura por cantidad pedida, aunque
+    //    la mercadería haya vuelto al depósito con una devolución. De 145 órdenes
+    //    así, en 115 había vuelto todo. Con esta cuenta, una orden devuelta queda
+    //    en cero y no entra.
+    var entregado = Number(l.qty_delivered || 0), facturado = Number(l.qty_invoiced || 0);
+    var cantidad = Math.max(0, entregado - facturado);
+    if (cantidad <= 0) return;
+    var precioUnit = Number(l.price_unit || 0), desc = Number(l.discount || 0);
+    var subtotal = precioUnit * cantidad * (1 - desc / 100);
+    // El IVA de la línea, con la misma proporción que trae Odoo.
+    var subPedido = Number(l.price_subtotal || 0), totPedido = Number(l.price_total || 0);
+    var total = subPedido !== 0 ? subtotal * (totPedido / subPedido) : subtotal;
     var montoPanel = (MONTO_BASE === "SIN_IVA") ? subtotal : total;
     var precioPromedio = cantidad !== 0 ? (subtotal / cantidad) : 0;
 
