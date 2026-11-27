@@ -395,6 +395,15 @@ function cobrosPorFactura_(uid, pwd, moveIds) {
   return mapa;
 }
 
+/** El estado de factura de una orden, en castellano y como lo muestra Odoo. */
+function estadoFactura_(st) {
+  if (st === "to invoice") return "Por facturar";
+  if (st === "invoiced") return "Facturado por completo";
+  if (st === "upselling") return "Venta adicional";
+  if (st === "no") return "Nada que facturar";
+  return String(st || "");
+}
+
 /** Saca un dato de la nota de la factura con una expresión regular. */
 function deLaNota_(nota, re) {
   if (!nota) return "";
@@ -789,7 +798,8 @@ function actualizarDatosOdoo_(silencioso) {
         (NOTAS[move.id] || ""),
         pedidoWebLinea,
         deLaNota_(NOTAS[move.id], /PAGO\s*:\s*([^·|\n]+)/i),
-        deLaNota_(NOTAS[move.id], /CUP[OÓ]N\s*:?\s*([^·|\n]+)/i)]);
+        deLaNota_(NOTAS[move.id], /CUP[OÓ]N\s*:?\s*([^·|\n]+)/i),
+        "Facturado por completo"]);
     });
   }
 
@@ -799,8 +809,8 @@ function actualizarDatosOdoo_(silencioso) {
     catch (e) { ss.toast("No se pudieron traer las remisiones: " + e.message, "⚠️", 10); }
   }
 
-  if (sheetData.getMaxColumns() < 49) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 49 - sheetData.getMaxColumns());
-  sheetData.getRange(1, 1, 1, 47).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono", "Unidad", "Pedido de origen", "Venta por la web", "Descripción", "Condición de pago", "Forma de cobro", "Referencia", "Nota de la factura", "Pedido web", "Pago (nota)", "Cupón (nota)"]]).setFontWeight("bold");
+  if (sheetData.getMaxColumns() < 50) sheetData.insertColumnsAfter(sheetData.getMaxColumns(), 50 - sheetData.getMaxColumns());
+  sheetData.getRange(1, 1, 1, 48).setValues([["Origen", "Fecha", "Año", "Mes", "Día", "Documento", "Nro. Movimiento", "Fecha Vencimiento", "Días Vencimiento", "Condición", "Total en Divisa", "Total Firmado", "Tipo Cambio", "Cliente", "Marca Original", "Filtro Marca", "Unidad de Negocio", "Vendedor", "Equipo/Canal", "Categoría", "Producto", "Precio Unitario", "Descuento", "Precio Promedio", "Cantidad", "Subtotal", "Total", "Total Factura", "Subtotal", "Moneda", "TOTAL GS", "Grupo E-commerce", "ID Factura Odoo", "Equipo Odoo", "Dirección de Entrega", "Teléfono", "Unidad", "Pedido de origen", "Venta por la web", "Descripción", "Condición de pago", "Forma de cobro", "Referencia", "Nota de la factura", "Pedido web", "Pago (nota)", "Cupón (nota)", "Estado de factura"]]).setFontWeight("bold");
   if (rowsOut.length > 0) sheetData.getRange(2, 1, rowsOut.length, rowsOut[0].length).setValues(rowsOut);
   // Sello de última actualización: el dashboard lo muestra en el menú lateral.
   configSheet.getRange("A9").setValue("Última actualización:").setFontWeight("bold").setFontColor("#2C7A7B");
@@ -973,7 +983,11 @@ function traerRemisiones_(uid, pwd, fechaInicioOdoo, fechaFinOdoo, rowsOut) {
       (l.product_uom ? l.product_uom[1] : ""),
       orden.name || "",
       (HAY_WEBSITE === false ? "" : (orden.website_id ? "Sí" : "No")),
-      String(l.name || ""), "", "", "", "", "", "", ""]);
+      String(l.name || ""), "", "", "", "", "", "", "",
+      // 🧾 Estado de factura de la orden, tal cual lo dice Odoo. Sin esto no se
+      //    distingue una entrega que de verdad está pendiente de una que ya se
+      //    facturó después de la última corrida de la carga.
+      estadoFactura_(orden.invoice_status)]);
     agregadas++;
   });
   return agregadas;
