@@ -852,6 +852,15 @@ const MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio
 
 let FILAS = [];          // ventas normalizadas
 let METAS = null;        // objetivos leídos de CONFIG
+/* ¿La planilla ya se cargó con el cálculo corregido de lo entregado sin
+   facturar? Antes se valuaba la orden ENTERA por su cantidad pedida, y Odoo
+   marca «Por facturar» aunque la mercadería haya vuelto con una devolución: el
+   número salía inflado (₲448 millones de órdenes devueltas, verificado en Odoo
+   sobre 145 órdenes de 2026). La carga nueva valúa lo entregado neto menos lo
+   facturado, y de paso trae la columna «Estado de factura». Mientras esa
+   columna no llegue, el informe avisa que ese KPI no es confiable, en vez de
+   mostrar un número que sabemos mal. Se apaga solo al correr la carga nueva. */
+let REMIS_CONFIABLE = false;
 let PLAN = null;         // plan estratégico leído de la hoja PLAN
 let PAGINA = "__resumen";
 let charts = {};
@@ -1299,9 +1308,16 @@ function normalizarData(filas) {
       cupon: String(r[46] || "").trim(),
       // El importe CON IVA, que es con el que algunos convenios liquidan.
       montoConIva: aNumero(r[26]),
+      // Estado de factura que dice Odoo (columna 48). Sólo lo trae la carga
+      //    nueva: si llega vacío, la planilla todavía es la de antes.
+      estadoFactura: String(r[47] || "").trim(),
       monto: aNumero(r[30])
     });
   }
+  // Alcanza con que UNA remisión traiga el estado: es la columna que sólo
+  // escribe la carga nueva.
+  REMIS_CONFIABLE = out.some(r => r.esRemision && r.estadoFactura) ||
+                    !out.some(r => r.esRemision);
   return agruparClientes(out);
 }
 
@@ -2130,8 +2146,10 @@ function renderKPIs(k, kRem) {
       (!soloFacturas && k.montoRemision ? " · incl. " + gs(k.montoRemision) + " en muestrarios" : ""),
       false, "neto") +
     kpi("Notas de Crédito", gs(k.nc), pct(Math.abs(k.nc), k.monto).toFixed(1) + "% de la venta", true) +
-    kpi("Entregado sin facturar", gs(kRem ? kRem.monto : 0),
-      soloFacturas ? "órdenes entregadas · NO suman al monto" : "órdenes entregadas · incluidas en el monto") +
+    kpi("Entregado sin facturar", REMIS_CONFIABLE ? gs(kRem ? kRem.monto : 0) : "a revisar",
+      REMIS_CONFIABLE
+        ? (soloFacturas ? "órdenes entregadas · NO suman al monto" : "órdenes entregadas · incluidas en el monto")
+        : "incluye órdenes cuya mercadería se devolvió · falta correr la carga nueva") +
     kpi("Cant. Facturas", num(k.facturas), num(k.lineas) + " líneas") +
     kpi("Promedio de Tickets", gs(k.ticket), "promedio neto por línea (AVG)") +
     kpi("Clientes Activos", num(k.activos), "de " + num(k.clientes) + " · desde " + k.corte.toLocaleDateString("es-PY"));
